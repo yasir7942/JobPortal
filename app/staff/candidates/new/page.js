@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/app/components/layouts/staff/Header";
 
+import ENUMS from "../../../../config/enums.json";
+
 // ✅ your existing component
 import DocumentsFieldArray from "@/app/staff/ui/DocumentsFieldArray";
 
@@ -11,6 +13,7 @@ import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useDropzone } from "react-dropzone";
+import { createCandidate, getAllJobRoles } from "@/app/data/Loader";
 
 /* ------------------------------------------------------------------ */
 /* Helpers */
@@ -37,8 +40,11 @@ function fileExtOk(file, allowedExt) {
     const name = (file?.name || "").toLowerCase();
     return allowedExt.some((ext) => name.endsWith(ext));
 }
-function normalizePhone(value) {
-    return String(value || "").trim();
+function normalizePhone(phone) {
+    return String(phone || "")
+        .trim()
+        .replace(/\s+/g, " ")       // multiple spaces => single
+        .replace(/[^\d+\-\s()]/g, ""); // remove weird chars (optional)
 }
 
 /* ------------------------------------------------------------------ */
@@ -59,7 +65,7 @@ function InfoTip({ text }) {
                 />
             </svg>
 
-            <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-lg opacity-0 group-hover:opacity-100 transition">
+            <span className="pointer-events-none ml-20 absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs text-gray-700 shadow-lg opacity-0 group-hover:opacity-100 transition">
                 {text}
             </span>
         </span>
@@ -70,10 +76,10 @@ function Field({ label, hint, info, error, children }) {
     return (
         <div className="space-y-1">
             <div className="flex items-center gap-2">
-                <div className="text-sm text-gray-700">{label}</div>
+                <div className="text-sm text-gray-900">{label}</div>
                 <InfoTip text={info} />
             </div>
-            {hint ? <div className="text-xs text-gray-500">{hint}</div> : null}
+            {hint ? <div className="text-xs ml-3 text-gray-500">{hint}</div> : null}
             {children}
             {error ? <div className="text-xs text-red-700">{error}</div> : null}
         </div>
@@ -84,7 +90,7 @@ function Input(props) {
     return (
         <input
             {...props}
-            className={`w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-amber-200 ${props.disabled ? "opacity-60" : ""
+            className={`w-full rounded-xl border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-red-100 focus:ring-2 focus:ring-red-300 ${props.disabled ? "opacity-0" : ""
                 }`}
         />
     );
@@ -93,7 +99,7 @@ function Select({ children, ...props }) {
     return (
         <select
             {...props}
-            className={`w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-amber-200 ${props.disabled ? "opacity-60" : ""
+            className={`w-full rounded-xl border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-red-100 focus:ring-2 focus:ring-red-300 ${props.disabled ? "opacity-0" : ""
                 }`}
         >
             {children}
@@ -104,7 +110,7 @@ function Textarea(props) {
     return (
         <textarea
             {...props}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-amber-200"
+            className="w-full rounded-xl border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-red-100  focus:ring-2 focus:ring-red-300"
         />
     );
 }
@@ -119,7 +125,7 @@ function PasswordInput({ value, onChange, placeholder, error }) {
                     value={value || ""}
                     onChange={onChange}
                     placeholder={placeholder}
-                    className={`w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-amber-200 ${error ? "border-red-400" : ""
+                    className={`w-full rounded-xl border border-gray-400 bg-white px-3 py-2 pr-10 text-sm text-gray-900 outline-none focus:border-red-100 focus:ring-2 focus:ring-red-300 ${error ? "border-red-400" : ""
                         }`}
                 />
                 <button
@@ -203,21 +209,44 @@ function DropzoneBox({ label, acceptText, multiple, value, onChange, error, info
 /* ------------------------------------------------------------------ */
 /* Searchable Multi-Select for job_roles */
 /* ------------------------------------------------------------------ */
-function MultiSelectSearch({ label, info, hint, options, value, onChange, error }) {
+function MultiSelectSearchIds({
+    label,
+    info,
+    hint,
+    options,      // [{id,title}]
+    value,        // [id,id,...]
+    onChange,     // set ids
+    error,
+    getLabel = (o) => o.title,
+    getValue = (o) => o.id,
+}) {
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState("");
 
-    const selected = Array.isArray(value) ? value : [];
+    const selectedIds = Array.isArray(value) ? value : [];
+
+    // map id -> option
+    const byId = useMemo(() => {
+        const m = new Map();
+        (options || []).forEach((o) => m.set(getValue(o), o));
+        return m;
+    }, [options, getValue]);
+
+    const selectedOptions = useMemo(
+        () => selectedIds.map((id) => byId.get(id)).filter(Boolean),
+        [selectedIds, byId]
+    );
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
-        if (!s) return options;
-        return options.filter((o) => String(o).toLowerCase().includes(s));
-    }, [q, options]);
+        if (!s) return options || [];
+        return (options || []).filter((o) => String(getLabel(o)).toLowerCase().includes(s));
+    }, [q, options, getLabel]);
 
     function toggle(opt) {
-        const exists = selected.includes(opt);
-        const next = exists ? selected.filter((x) => x !== opt) : [...selected, opt];
+        const id = getValue(opt);
+        const exists = selectedIds.includes(id);
+        const next = exists ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
         onChange(next);
     }
 
@@ -225,59 +254,58 @@ function MultiSelectSearch({ label, info, hint, options, value, onChange, error 
         <div className="space-y-1">
             <div className="flex items-center gap-2">
                 <div className="text-sm text-gray-700">{label}</div>
-                <InfoTip text={info} />
+                {info ? <InfoTip text={info} /> : null}
             </div>
             {hint ? <div className="text-xs text-gray-500">{hint}</div> : null}
 
-            {/* selected chips */}
+            {/* Selected chips (titles) */}
             <div className="flex flex-wrap gap-2">
-                {selected.length === 0 ? (
+                {selectedOptions.length === 0 ? (
                     <div className="text-xs text-gray-500">No role selected.</div>
                 ) : (
-                    selected.map((r) => (
-                        <span
-                            key={r}
-                            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-800"
-                        >
-                            {r}
-                            <button
-                                type="button"
-                                className="text-gray-500 hover:text-gray-900"
-                                onClick={() => onChange(selected.filter((x) => x !== r))}
-                                title="Remove"
+                    selectedOptions.map((o) => {
+                        const id = getValue(o);
+                        return (
+                            <span
+                                key={id}
+                                className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-800"
                             >
-                                ✕
-                            </button>
-                        </span>
-                    ))
+                                {getLabel(o)}
+                                <button
+                                    type="button"
+                                    className="text-gray-500 hover:text-gray-900"
+                                    onClick={() => onChange(selectedIds.filter((x) => x !== id))}
+                                    title="Remove"
+                                >
+                                    ✕
+                                </button>
+                            </span>
+                        );
+                    })
                 )}
             </div>
 
             <div className="relative">
                 <button
                     type="button"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-900 hover:bg-gray-50"
+                    className="w-full rounded-xl border border-gray-400 bg-white px-3 py-2 text-left text-sm text-gray-900 hover:bg-gray-50"
                     onClick={() => setOpen((s) => !s)}
                 >
                     {open ? "Close roles list" : "Select job roles"}
                 </button>
 
                 {open && (
-                    <div className="absolute z-40 mt-2 w-full rounded-2xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+                    <div className="absolute z-40 mt-2 w-full rounded-2xl border border-gray-400  bg-white shadow-lg overflow-hidden">
                         <div className="p-3 border-b border-gray-200">
                             <input
                                 value={q}
                                 onChange={(e) => setQ(e.target.value)}
                                 placeholder="Search roles..."
-                                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-200"
+                                className="w-full rounded-xl border border-gray-400 bg-white px-3 py-2 text-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-200"
                             />
                             <div className="mt-2 flex items-center justify-between">
                                 <div className="text-xs text-gray-500">{filtered.length} results</div>
-                                <button
-                                    type="button"
-                                    className="text-xs text-red-700 hover:underline"
-                                    onClick={() => onChange([])}
-                                >
+                                <button type="button" className="text-xs text-red-700 hover:underline" onClick={() => onChange([])}>
                                     Clear all
                                 </button>
                             </div>
@@ -287,17 +315,20 @@ function MultiSelectSearch({ label, info, hint, options, value, onChange, error 
                             {filtered.length === 0 ? (
                                 <div className="p-3 text-sm text-gray-600">No roles found.</div>
                             ) : (
-                                filtered.map((opt) => (
-                                    <label key={opt} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50">
-                                        <input
-                                            type="checkbox"
-                                            checked={selected.includes(opt)}
-                                            onChange={() => toggle(opt)}
-                                            className="h-4 w-4"
-                                        />
-                                        <span className="text-sm text-gray-800">{opt}</span>
-                                    </label>
-                                ))
+                                filtered.map((opt) => {
+                                    const id = getValue(opt);
+                                    return (
+                                        <label key={id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.includes(id)}
+                                                onChange={() => toggle(opt)}
+                                                className="h-4 w-4"
+                                            />
+                                            <span className="text-sm text-gray-800">{getLabel(opt)}</span>
+                                        </label>
+                                    );
+                                })
                             )}
                         </div>
 
@@ -318,7 +349,6 @@ function MultiSelectSearch({ label, info, hint, options, value, onChange, error 
         </div>
     );
 }
-
 /* ------------------------------------------------------------------ */
 /* Schema (Strapi fields) */
 /* ------------------------------------------------------------------ */
@@ -326,56 +356,56 @@ const CandidateCreateSchema = z
     .object({
         referenceNumber: z.string().optional(), // auto by Strapi
 
-        firstName: z.string().min(1, "First name is required"),
-        lastName: z.string().min(1, "Last name is required"),
+        // ✅ REQUIRED ONLY
         fullName: z.string().min(1, "Full name is required"),
+        firstName: z.string().min(2, "First name must be at least 2 characters"),
 
-        gender: z.string().min(1, "Gender is required"),
-        birthDate: z.string().min(1, "Birth date is required"),
-        nationality: z.string().min(1, "Nationality is required"),
-        maritalStatus: z.string().min(1, "Marital status is required"),
-        seasonalStatus: z.string().min(1, "Seasonal status is required"),
-        englishLevel: z.string().min(1, "English level is required"),
+        // ✅ OPTIONAL
+        lastName: z.string().optional(),
 
-        mobile: z.string().min(7, "Mobile is too short").max(20, "Mobile is too long"),
-        email: z.string().email("Invalid email"),
+        genderList: z.string().optional(),
+        birthDate: z.string().optional(),
+        nationalityList: z.string().optional(),
+        maritalStatusList: z.string().optional(),
+        seasonalStatusList: z.string().optional(),
+        englishLevelList: z.string().optional(),
 
-        jobStatus: z.string().min(1, "Job status is required"),
-        job_roles: z.array(z.string()).min(1, "Select at least 1 job role"),
+        mobile: z.string().optional(),
+        email: z.string().min(1, "Email is required"),
 
-        isProfileVerified: z.boolean(),
-        currentlyEmployed: z.boolean().default(false),
+        jobStatus: z.string().optional(),
+        job_roles: z.array(z.number()).optional(),
 
-        numberOfExperience: z.coerce.number().min(0, "Must be 0 or more").optional(),
+        isProfileVerifiedList: z.string().optional(),
+        currentlyEmployed: z.boolean().optional(),
+
+        numberOfExperience: z.coerce.number().optional(),
         shortSummary: z.string().max(250, "Max 250 characters").optional(),
         privateNotes: z.string().max(2000, "Max 2000 characters").optional(),
 
-        // experience text fields (keep your Strapi names)
-        currentJobExperiece: z.string().max(1200, "Max 1200 characters").optional(),
-        previousJobExperiece: z.string().max(1200, "Max 1200 characters").optional(),
+        currentJobExperiece: z.coerce.number().optional(),
+        previousJobExperiece: z.coerce.number().optional(),
         previousCompany: z.string().max(120, "Max 120 characters").optional(),
 
         source: z.string().max(120, "Max 120 characters").optional(),
 
-        // screening
         dateScreeningInterview: z.string().optional(),
-        screeningVideoLink: z.string().optional(),
 
-        // account
-        username: z.string().min(3, "Username must be at least 3 characters"),
-        password: z.string().min(8, "Password must be at least 8 characters"),
-        retypePassword: z.string().min(8, "Retype password is required"),
 
-        // media
-        profileImageFile: z.any().optional(),
-        cvFile: z.any().optional(),
-        passportFile: z.any().optional(),
+        // account (optional now)
+        username: z.string().min(1, "Username is required"),
+        password: z.string().min(3, "Password must be at least 3 characters"),
+        retypePassword: z.string().min(3, "Retype Password must be at least 3 characters"),
+
+        // media (all optional)
+        profileImage: z.any().optional(),
+        CV: z.any().optional(),
+        passport: z.any().optional(),
         passportExpireDate: z.string().optional(),
 
-        workingVideos: z.any().optional(), // multiple files
+        workingVideo: z.any().optional(), // single file
         miScreeningVideo: z.any().optional(), // single file
 
-        // documents repeatable
         documents: z
             .array(
                 z.object({
@@ -388,83 +418,120 @@ const CandidateCreateSchema = z
             .default([]),
     })
     .superRefine((val, ctx) => {
-
-        // Profile Image (optional) - image only
-        if (val.profileImageFile && val.profileImageFile instanceof File) {
-            if (!fileExtOk(val.profileImageFile, [".jpg", ".jpeg", ".png", ".webp"])) {
+        // ✅ Profile Image (optional) - image only
+        if (val.profileImage && val.profileImage instanceof File) {
+            if (!fileExtOk(val.profileImage, [".jpg", ".jpeg", ".png", ".webp"])) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
-                    path: ["profileImageFile"],
+                    path: ["profileImage"],
                     message: "Profile image must be jpg/png/webp",
                 });
             }
         }
 
-        // birth date
-        if (!isValidDateNotFuture(val.birthDate)) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Invalid birth date" });
+        // ✅ birthDate validate ONLY if user provided it
+        if (val.birthDate) {
+            if (!isValidDateNotFuture(val.birthDate)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["birthDate"],
+                    message: "Invalid birth date",
+                });
+            }
         }
 
-        // password match
-        if (val.password && val.retypePassword && val.password !== val.retypePassword) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["retypePassword"], message: "Passwords do not match" });
+        // ✅ Email validate ONLY if user provided it
+        if (val.email) {
+            const emailOk = z.string().email().safeParse(val.email).success;
+            if (!emailOk) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["email"],
+                    message: "Invalid email",
+                });
+            }
         }
 
-        // screening link
-        if (val.screeningVideoLink && !isValidUrl(val.screeningVideoLink)) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["screeningVideoLink"],
-                message: "Invalid URL (must include https://...)",
-            });
+        // ✅ Mobile validate ONLY if user provided it
+        if (val.mobile) {
+            const m = String(val.mobile).trim();
+            if (m.length < 7 || m.length > 20) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["mobile"],
+                    message: "Mobile must be 7–20 characters",
+                });
+            }
         }
 
-        // CV required (PDF or image)
-        const cv = val.cvFile;
-        if (!cv || !(cv instanceof File)) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cvFile"], message: "CV is required" });
-        } else if (!fileExtOk(cv, [".pdf", ".jpg", ".jpeg", ".png", ".webp"])) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["cvFile"],
-                message: "CV must be PDF or image (jpg/png/webp)",
-            });
+        // ✅ Password logic (optional)
+        // If user typed any password field -> validate both and match
+        const p = (val.password || "").trim();
+        const rp = (val.retypePassword || "").trim();
+        if (p || rp) {
+            if (p.length < 4) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["password"],
+                    message: "Password must be at least 4 characters",
+                });
+            }
+            if (!rp) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["retypePassword"],
+                    message: "Retype password is required",
+                });
+            }
+            if (p && rp && p !== rp) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["retypePassword"],
+                    message: "Passwords do not match",
+                });
+            }
         }
 
-        // Passport required + expiry date
-        const pass = val.passportFile;
-        if (!pass || !(pass instanceof File)) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["passportFile"], message: "Passport is required" });
-        } else if (!fileExtOk(pass, [".pdf", ".jpg", ".jpeg", ".png", ".webp"])) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["passportFile"],
-                message: "Passport must be PDF or image (jpg/png/webp)",
-            });
-        }
-        if (!val.passportExpireDate) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["passportExpireDate"],
-                message: "Passport expiry date is required",
-            });
+
+
+        // ✅ CV validate ONLY if file selected
+        if (val.CV && val.CV instanceof File) {
+            if (!fileExtOk(val.CV, [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".doc", ".docx"])) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["CV"],
+                    message: "CV must be pdf/jpg/png/webp/doc/docx",
+                });
+            }
         }
 
-        // workingVideos: optional but validate if selected
-        const vids = val.workingVideos;
-        if (Array.isArray(vids)) {
-            vids.forEach((f, i) => {
-                if (f instanceof File && !fileExtOk(f, [".mp4", ".mov", ".webm", ".mkv"])) {
-                    ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
-                        path: ["workingVideos", i],
-                        message: "Video must be mp4/mov/webm/mkv",
-                    });
-                }
-            });
+        // ✅ Passport validate ONLY if file selected
+        if (val.passport && val.passport instanceof File) {
+            if (!fileExtOk(val.passport, [".pdf", ".jpg", ".jpeg", ".png", ".webp"])) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["passport"],
+                    message: "Passport must be pdf/jpg/png/webp",
+                });
+            }
         }
 
-        // miScreeningVideo optional validate if selected
+        // ✅ passportExpireDate validate ONLY if provided
+        // (no validation needed otherwise)
+        // if (val.passportExpireDate) { ... }
+
+        // ✅ workingVideo validate ONLY if selected
+        if (val.workingVideo && val.workingVideo instanceof File) {
+            if (!fileExtOk(val.workingVideo, [".mp4", ".mov", ".webm", ".mkv"])) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["workingVideo"],
+                    message: "Video must be mp4/mov/webm/mkv",
+                });
+            }
+        }
+
+        // ✅ miScreeningVideo validate ONLY if selected
         if (val.miScreeningVideo && val.miScreeningVideo instanceof File) {
             if (!fileExtOk(val.miScreeningVideo, [".mp4", ".mov", ".webm", ".mkv"])) {
                 ctx.addIssue({
@@ -475,21 +542,33 @@ const CandidateCreateSchema = z
             }
         }
 
-        // documents: validate only if row has something
+        // ✅ documents validate ONLY if row has something
         (val.documents || []).forEach((d, i) => {
-            const any = (d?.name || "").trim() || (d?.remarks || "").trim() || (d?.file instanceof File);
+            const any = (d?.name || "").trim() || (d?.remarks || "").trim() || d?.file;
             if (!any) return;
 
-            if (!d?.name || !String(d.name).trim()) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["documents", i, "name"], message: "Document name is required" });
+            // If user started a doc row, then enforce proper structure
+            if (!String(d?.name || "").trim()) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["documents", i, "name"],
+                    message: "Document name is required",
+                });
             }
-            if (!d?.file || !(d.file instanceof File)) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["documents", i, "file"], message: "Document file is required" });
-            } else if (!fileExtOk(d.file, [".pdf", ".jpg", ".jpeg", ".png", ".webp"])) {
+
+            if (d?.file && d.file instanceof File) {
+                if (!fileExtOk(d.file, [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".doc", ".docx", ".xls", ".xlsx", ".csv"])) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ["documents", i, "file"],
+                        message: "Invalid file type (pdf/image/doc/xls/csv allowed)",
+                    });
+                }
+            } else {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
                     path: ["documents", i, "file"],
-                    message: "Documents must be PDF or image files",
+                    message: "Document file is required",
                 });
             }
         });
@@ -500,42 +579,27 @@ const CandidateCreateSchema = z
 /* ------------------------------------------------------------------ */
 export default function NewCandidatePage() {
     // ✅ these should come from Strapi enums / API
-    const [ENUMS, setENUMS] = useState({
-        genders: ["Male", "Female", "Undisclosed"],
-        nationalities: ["Pakistan", "UAE", "KSA", "India", "Bangladesh", "Philippines", "Egypt", "Other"],
-        maritalStatus: ["Single", "Married", "Divorced", "Widowed"],
-        seasonalStatus: ["Seasonal", "Permanent", "Any"],
-        englishLevel: ["Average", "Basic", "Below Basic", "Excellent"],
-        jobStatus: ["Available", "Working", "On Hold", "Blacklisted"],
-        yesNo: [
-            { label: "Yes", value: true },
-            { label: "No", value: false },
-        ],
-    });
+    /* const [ENUMS, setENUMS] = useState({
+         genders: ["Male", "Female", "Undisclosed"],
+         nationalities: ["Pakistan", "UAE", "KSA", "India", "Bangladesh", "Philippines", "Egypt", "Other"],
+         maritalStatus: ["Single", "Married", "Divorced", "Widowed"],
+         seasonalStatus: ["Seasonal", "Permanent", "Any"],
+         englishLevel: ["Average", "Basic", "Below Basic", "Excellent"],
+         jobStatus: ["Available", "Working", "On Hold", "Blacklisted"],
+         isProfileVerified: ["Documents Pending", "Verified", "On Hold", "Blacklisted"],
+     }); */
 
-    // ✅ job roles should be fetched (too many)
-    const [jobRoles, setJobRoles] = useState([
-        "CNC Machine Operator",
-        "Electrician",
-        "Fabricator",
-        "General Worker",
-        "Car Mechanic",
-        "Forklift Operator",
-        "Welder",
-
-    ]);
+    // ✅ job roles should be fetched from strapi(too many)
+    const [jobRoles, setJobRoles] = useState([]);
 
     // OPTIONAL: fetch real options (recommended)
     useEffect(() => {
         (async () => {
             try {
-                // Example:
-                // const res = await fetch("/api/meta/candidate", { cache: "no-store" });
-                // const json = await res.json();
-                // setENUMS(json.enums);
-                // setJobRoles(json.jobRoles);
-            } catch {
-                // keep fallback
+                const res = await getAllJobRoles();
+                setJobRoles(res);
+            } catch (e) {
+                console.log(e);
             }
         })();
     }, []);
@@ -557,13 +621,13 @@ export default function NewCandidatePage() {
             firstName: "",
             lastName: "",
             fullName: "",
-            profileImageFile: null,
-            gender: "",
+            profileImage: null,
+            genderList: "",
             birthDate: "",
-            nationality: "",
-            maritalStatus: "",
-            seasonalStatus: "",
-            englishLevel: "",
+            nationalityList: "",
+            maritalStatusList: "",
+            seasonalStatusList: "",
+            englishLevelList: "",
 
             mobile: "",
             email: "",
@@ -571,31 +635,31 @@ export default function NewCandidatePage() {
             jobStatus: "",
             job_roles: [],
 
-            isProfileVerified: false,
+            isProfileVerifiedList: "",
             currentlyEmployed: false,
 
             numberOfExperience: 0,
             shortSummary: "",
             privateNotes: "",
 
-            currentJobExperiece: "",
-            previousJobExperiece: "",
+            currentJobExperiece: 0,
+            previousJobExperiece: 0,
             previousCompany: "",
 
             source: "",
 
             dateScreeningInterview: "",
-            screeningVideoLink: "",
+
 
             username: "",
             password: "",
             retypePassword: "",
 
-            cvFile: null,
-            passportFile: null,
+            CV: null,
+            passport: null,
             passportExpireDate: "",
 
-            workingVideos: [],
+            workingVideo: null,
             miScreeningVideo: null,
 
             documents: [],
@@ -605,36 +669,106 @@ export default function NewCandidatePage() {
     const firstName = watch("firstName");
     const lastName = watch("lastName");
 
-    const profileImageFile = watch("profileImageFile");
+    const profileImage = watch("profileImage");
     const profilePreview = useMemo(() => {
-        if (profileImageFile && profileImageFile instanceof File) {
-            return URL.createObjectURL(profileImageFile);
+        if (profileImage && profileImage instanceof File) {
+            return URL.createObjectURL(profileImage);
         }
         return ""; // no existing image in create
-    }, [profileImageFile]);
+    }, [profileImage]);
 
     useEffect(() => {
-        if (!(profileImageFile instanceof File)) return;
-        const url = URL.createObjectURL(profileImageFile);
+        if (!(profileImage instanceof File)) return;
+        const url = URL.createObjectURL(profileImage);
         return () => URL.revokeObjectURL(url);
-    }, [profileImageFile]);
+    }, [profileImage]);
 
 
     // auto fullName
-    useEffect(() => {
-        const fn = `${firstName || ""} ${lastName || ""}`.trim();
-        setValue("fullName", fn, { shouldValidate: true, shouldDirty: true });
+    /* useEffect(() => {
+         const fn = `${firstName || ""} ${lastName || ""}`.trim();
+         setValue("fullName", fn, { shouldValidate: true, shouldDirty: true });
     }, [firstName, lastName, setValue]);
-
-    const onSubmit = async (data) => {
+*/
+    const onSubmit = async (formData) => {
         setSubmitMsg("");
-        // normalize phone (optional)
-        data.mobile = normalizePhone(data.mobile);
+        console.log("Candidate payload:", formData);
 
-        // ✅ When connecting to Strapi, use FormData for media upload
-        console.log("Candidate payload:", data);
-        setSubmitMsg("Candidate saved (dummy). Later connect to Strapi.");
+        // optional normalize
+        if (formData.mobile) formData.mobile = normalizePhone(formData.mobile);
+
+        try {
+            // ✅ 1) Build JSON part (NO files inside JSON)
+            const payloadData = {
+                ...formData,
+
+                // IMPORTANT: remove File objects from JSON (server will receive them from fd keys)
+                profileImage: undefined,
+                CV: undefined,
+                passport: undefined,
+                workingVideo: undefined,
+                miScreeningVideo: undefined,
+
+                // documents: remove file objects from JSON but keep name/remarks
+                documents: (formData.documents || []).map((d) => ({
+                    name: d?.name || "",
+                    remarks: d?.remarks || "",
+                    // file goes separately in FormData
+                })),
+            };
+
+            // ✅ 2) Build FormData for server route
+            const fd = new FormData();
+            fd.append("data", JSON.stringify(payloadData));
+
+            // ✅ files must match your Strapi field keys (same as you used before)
+            if (formData.profileImage instanceof File) {
+                fd.append("files.profileImage", formData.profileImage);
+            }
+            if (formData.CV instanceof File) {
+                fd.append("files.CV", formData.CV);
+            }
+            if (formData.passport instanceof File) {
+                fd.append("files.passport", formData.passport);
+            }
+
+            // single video
+            if (formData.workingVideo instanceof File) {
+                fd.append("files.workingVideo", formData.workingVideo);
+            }
+
+            // single video
+            if (formData.miScreeningVideo instanceof File) {
+                fd.append("files.miScreeningVideo", formData.miScreeningVideo);
+            }
+
+            // documents component files
+            (formData.documents || []).forEach((doc, idx) => {
+                if (doc?.file instanceof File) {
+                    fd.append(`files.documents.${idx}.file`, doc.file);
+                }
+            });
+
+            // ✅ 3) Call YOUR server route (token is on server)
+            const res = await fetch("/api/candidates/create", {
+                method: "POST",
+                body: fd,
+            });
+
+            const json = await res.json();
+
+            if (!res.ok) {
+                throw new Error(json?.error || "Candidate not saved");
+            }
+
+            console.log("Created (server):", json);
+            setSubmitMsg(`Candidate saved ✅ Ref: ${json.referenceNumber || ""}`);
+        } catch (e) {
+            console.error("Add Candidate Error:", e);
+            setSubmitMsg(`Error: ${e.message || "Candidate not saved"} ❌`);
+        }
     };
+    /******end onSubmit */
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -646,11 +780,11 @@ export default function NewCandidatePage() {
                         <div className="flex items-center justify-between gap-2">
                             <div>
                                 <div className="text-lg text-gray-900">Create Candidate</div>
-                                <div className="text-sm text-gray-600">Sorted fields + tooltips + searchable job roles.</div>
+                                <div className="text-sm text-gray-600">Create new candidate.</div>
                             </div>
                             <Link
                                 href="/staff/candidates"
-                                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                className="rounded-xl border border-gray-400 bg-white px-6 py-2 text-base text-gray-700 hover:bg-gray-50"
                             >
                                 Back
                             </Link>
@@ -659,27 +793,33 @@ export default function NewCandidatePage() {
 
                     <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-6">
                         {/* ------------------ TOP: Identity + Contact ------------------ */}
-                        <div className="rounded-2xl border border-gray-200 p-4">
-                            <div className="text-sm text-gray-900 font-semibold">Identity & Contact</div>
-                            <div className="text-xs text-gray-600 mt-1">Start with required information for quick processing.</div>
+                        <div className="rounded-2xl border border-red-200 p-4">
+                            <div className="text-base text-red-600 font-semibold">Identity & Contact</div>
+                            <div className="text-sm text-gray-800 mt-1">Start with required information for quick processing.</div>
 
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 ">
+                                {/* ----    <Field
                                     label="Reference Number"
-                                    hint="Auto-generated by Strapi"
+                                    hint="Auto-generated by system, unique identifier for the candidate."
                                     info="This is generated after saving the candidate."
                                 >
                                     <Input {...register("referenceNumber")} disabled placeholder="Auto-generated" />
                                 </Field>
 
-                                <Field label="Full Name" hint="Auto from first + last" info="Full name is automatically created." error={errors.fullName?.message}>
-                                    <Input {...register("fullName")} readOnly placeholder="Auto from first + last" />
+                                 ---- */}
+                                <Field label="Full Name" hint="" info="Full name of candidate" error={errors.fullName?.message}>
+                                    <Input {...register("fullName")} placeholder="First + Middle + Last" />
                                 </Field>
 
-                                {/* Profile Image */}
+
+
+                            </div>
+
+                            {/* Profile Image */}
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
-                                    name="profileImageFile"
+                                    name="profileImage"
                                     render={({ field }) => (
                                         <DropzoneBox
                                             label="Profile Image"
@@ -687,7 +827,7 @@ export default function NewCandidatePage() {
                                             multiple={false}
                                             value={field.value}
                                             onChange={field.onChange}
-                                            error={errors.profileImageFile?.message}
+                                            error={errors.profileImage?.message}
                                         />
                                     )}
                                 />
@@ -697,9 +837,9 @@ export default function NewCandidatePage() {
                                         <div className="text-sm text-gray-800 mb-2">Preview</div>
                                         <img src={profilePreview} className="h-40 w-40 rounded-2xl object-cover border border-gray-200 bg-white" />
                                     </div>
-                                ) : null}
+                                ) : null}  </div>
 
-                            </div>
+
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field label="First Name" info="Candidate first name as per passport." error={errors.firstName?.message}>
@@ -711,8 +851,8 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <Field label="Gender" info="Enumeration from Strapi (Male/Female/Undisclosed)." error={errors.gender?.message}>
-                                    <Select {...register("gender")}>
+                                <Field label="Gender" info="Enumeration from Strapi (Male/Female/Undisclosed)." error={errors.genderList?.message}>
+                                    <Select {...register("genderList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.genders.map((g) => (
                                             <option key={g} value={g}>
@@ -726,8 +866,8 @@ export default function NewCandidatePage() {
                                     <Input {...register("birthDate")} type="date" />
                                 </Field>
 
-                                <Field label="Nationality" info="Enumeration from Strapi." error={errors.nationality?.message}>
-                                    <Select {...register("nationality")}>
+                                <Field label="Nationality" info="Enumeration from Strapi." error={errors.nationalityList?.message}>
+                                    <Select {...register("nationalityList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.nationalities.map((n) => (
                                             <option key={n} value={n}>
@@ -743,30 +883,30 @@ export default function NewCandidatePage() {
                                     <Input {...register("mobile")} placeholder="+92 3xx xxxxxxx" />
                                 </Field>
 
-                                <Field label="Email" info="Candidate email for login/communication." error={errors.email?.message}>
-                                    <Input {...register("email")} placeholder="name@email.com" />
-                                </Field>
+
                             </div>
                         </div>
 
                         {/* ------------------ JOB / STATUS (important) ------------------ */}
-                        <div className="rounded-2xl border border-gray-200 p-4">
-                            <div className="text-sm text-gray-900 font-semibold">Job & Status</div>
-                            <div className="text-xs text-gray-600 mt-1">Most-used screening fields for shortlisting.</div>
+                        <div className="rounded-2xl border border-red-200 p-4">
+                            <div className="text-base text-red-600 font-semibold">Job & Status</div>
+                            <div className="text-sm text-gray-800 mt-1">Most-used screening fields for shortlisting.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
                                     name="job_roles"
                                     render={({ field }) => (
-                                        <MultiSelectSearch
+                                        <MultiSelectSearchIds
                                             label="Job Roles"
                                             info="Search and select multiple roles (Strapi relation)."
                                             hint="Type to search roles. Select multiple."
-                                            options={jobRoles}
-                                            value={field.value}
-                                            onChange={field.onChange}
+                                            options={jobRoles}          // ✅ [{id,title,...}]
+                                            value={field.value || []}   // ✅ [2,6,11]
+                                            onChange={field.onChange}   // ✅ sets IDs
                                             error={errors.job_roles?.message}
+                                            getLabel={(o) => o.title}   // ✅ show title
+                                            getValue={(o) => o.id}      // ✅ store id
                                         />
                                     )}
                                 />
@@ -784,8 +924,8 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <Field label="Marital Status" info="Enumeration from Strapi." error={errors.maritalStatus?.message}>
-                                    <Select {...register("maritalStatus")}>
+                                <Field label="Marital Status" info="Enumeration from Strapi." error={errors.maritalStatusList?.message}>
+                                    <Select {...register("maritalStatusList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.maritalStatus.map((x) => (
                                             <option key={x} value={x}>
@@ -795,8 +935,8 @@ export default function NewCandidatePage() {
                                     </Select>
                                 </Field>
 
-                                <Field label="Seasonal Status" info="Enumeration from Strapi." error={errors.seasonalStatus?.message}>
-                                    <Select {...register("seasonalStatus")}>
+                                <Field label="Seasonal Status" info="Enumeration from Strapi." error={errors.seasonalStatusList?.message}>
+                                    <Select {...register("seasonalStatusList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.seasonalStatus.map((x) => (
                                             <option key={x} value={x}>
@@ -806,8 +946,8 @@ export default function NewCandidatePage() {
                                     </Select>
                                 </Field>
 
-                                <Field label="English Level" info="Enumeration from Strapi." error={errors.englishLevel?.message}>
-                                    <Select {...register("englishLevel")}>
+                                <Field label="English Level" info="Enumeration from Strapi." error={errors.englishLevelList?.message}>
+                                    <Select {...register("englishLevelList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.englishLevel.map((x) => (
                                             <option key={x} value={x}>
@@ -820,13 +960,13 @@ export default function NewCandidatePage() {
                                 <Field label="Profile Verified" info="Set Yes only after document checks.">
                                     <Controller
                                         control={control}
-                                        name="isProfileVerified"
+                                        name="isProfileVerifiedList"
                                         render={({ field }) => (
-                                            <Select value={String(field.value)} onChange={(e) => field.onChange(e.target.value === "true")}>
+                                            <Select value={field.value || ""} onChange={(e) => field.onChange(e.target.value)}>
                                                 <option value="">Choose here</option>
-                                                {ENUMS.yesNo.map((x) => (
-                                                    <option key={x.label} value={String(x.value)}>
-                                                        {x.label}
+                                                {ENUMS.isProfileVerified.map((x, idx) => (
+                                                    <option key={`${x}-${idx}`} value={x}>
+                                                        {x}
                                                     </option>
                                                 ))}
                                             </Select>
@@ -864,9 +1004,9 @@ export default function NewCandidatePage() {
                         </div>
 
                         {/* ------------------ EXPERIENCE ------------------ */}
-                        <div className="rounded-2xl border border-gray-200 p-4">
-                            <div className="text-sm text-gray-900 font-semibold">Experience Details</div>
-                            <div className="text-xs text-gray-600 mt-1">Useful for recruiters and screening.</div>
+                        <div className="rounded-2xl border border-red-200 p-4">
+                            <div className="text-base text-red-600 font-semibold">Experience Details</div>
+                            <div className="text-sm text-gray-800 mt-1">Useful for recruiters and screening.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <Field label="Previous Company" info="Last company name (if any)." error={errors.previousCompany?.message}>
@@ -874,36 +1014,52 @@ export default function NewCandidatePage() {
                                 </Field>
 
                                 <Field label="Current Job Experience" info="Short details about current job." error={errors.currentJobExperiece?.message}>
-                                    <Input {...register("currentJobExperiece")} placeholder="e.g. 2 years CNC operator, machine model..." />
+                                    <Input {...register("currentJobExperiece")} type="number" min={0} step={1} />
                                 </Field>
 
                                 <Field label="Previous Job Experience" info="Short details about previous jobs." error={errors.previousJobExperiece?.message}>
-                                    <Input {...register("previousJobExperiece")} placeholder="e.g. 3 years electrician..." />
+                                    <Input {...register("previousJobExperiece")} type="number" min={0} step={1} />
                                 </Field>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Short Summary" info="Max 250 chars. Good for quick review." error={errors.shortSummary?.message}>
-                                    <Input {...register("shortSummary")} placeholder="e.g. Ready to join, strong skills in..." />
+                                <Field
+                                    label="Short Summary"
+                                    info="Max 250 chars. Good for quick review."
+                                    error={errors.shortSummary?.message}
+                                >
+                                    <Textarea
+                                        {...register("shortSummary")}
+                                        placeholder="e.g. Ready to join, strong skills in..."
+                                        rows={4}
+                                        maxLength={250}
+                                    />
                                 </Field>
 
-                                <Field label="Private Notes" info="Internal only (not for clients)."
+                                <Field
+                                    label="Private Notes"
+                                    info="Internal only (not for clients)."
                                     error={errors.privateNotes?.message}
                                 >
-                                    <Input {...register("privateNotes")} placeholder="Recruiter notes..." />
+                                    <Textarea
+                                        {...register("privateNotes")}
+                                        placeholder="Recruiter notes..."
+                                        rows={4}
+                                        maxLength={2000}
+                                    />
                                 </Field>
                             </div>
                         </div>
 
                         {/* ------------------ DOCUMENTS & MEDIA ------------------ */}
-                        <div className="rounded-2xl border border-gray-200 p-4">
-                            <div className="text-sm text-gray-900 font-semibold">Documents & Media</div>
-                            <div className="text-xs text-gray-600 mt-1">Upload required media. CV supports PDF/images.</div>
+                        <div className="rounded-2xl border border-red-200 p-4">
+                            <div className="text-base text-red-600 font-semibold">Documents & Media</div>
+                            <div className="text-sm text-gray-800 mt-1">Upload required media. CV supports PDF/images.</div>
 
                             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
-                                    name="cvFile"
+                                    name="CV"
                                     render={({ field }) => (
                                         <DropzoneBox
                                             label="CV (Required)"
@@ -913,14 +1069,14 @@ export default function NewCandidatePage() {
                                             multiple={false}
                                             value={field.value}
                                             onChange={field.onChange}
-                                            error={errors.cvFile?.message}
+                                            error={errors.CV?.message}
                                         />
                                     )}
                                 />
 
                                 <Controller
                                     control={control}
-                                    name="passportFile"
+                                    name="passport"
                                     render={({ field }) => (
                                         <DropzoneBox
                                             label="Passport (Required)"
@@ -930,7 +1086,7 @@ export default function NewCandidatePage() {
                                             multiple={false}
                                             value={field.value}
                                             onChange={field.onChange}
-                                            error={errors.passportFile?.message}
+                                            error={errors.passport?.message}
                                         />
                                     )}
                                 />
@@ -945,20 +1101,39 @@ export default function NewCandidatePage() {
                             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
-                                    name="workingVideos"
+                                    name="workingVideo"
                                     render={({ field }) => (
                                         <DropzoneBox
-                                            label="Working Videos (Optional)"
-                                            info="Upload multiple working videos (mp4/mov/webm/mkv)."
-                                            hint="You can select multiple files."
+                                            label="Working Video"
+                                            info="Upload single  working video (mp4/mov/webm/mkv)."
+                                            hint="upload single working video."
                                             acceptText="Accepted: .mp4, .mov, .webm, .mkv"
-                                            multiple={true}
+                                            multiple={false}
                                             value={field.value}
                                             onChange={field.onChange}
-                                            error={errors.workingVideos?.message}
+                                            error={errors.workingVideo?.message}
                                         />
                                     )}
                                 />
+
+
+                            </div>
+
+                            {/* ✅ Repeatable component documents */}
+                            <div className="mt-4">
+                                <DocumentsFieldArray control={control} register={register} errors={errors} name="documents" />
+                            </div>
+                        </div>
+
+                        {/* ------------------ SCREENING ------------------ */}
+                        <div className="rounded-2xl border border-red-200 p-4">
+                            <div className="text-base text-red-600 font-semibold">Screening</div>
+                            <div className="text-sm text-gray-800 mt-1">Store interview date and video</div>
+
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Field label="Screening Interview Date" info="Date of screening interview (optional)." error={errors.dateScreeningInterview?.message}>
+                                    <Input {...register("dateScreeningInterview")} type="date" />
+                                </Field>
 
                                 <Controller
                                     control={control}
@@ -976,37 +1151,12 @@ export default function NewCandidatePage() {
                                     )}
                                 />
                             </div>
-
-                            {/* ✅ Repeatable component documents */}
-                            <div className="mt-4">
-                                <DocumentsFieldArray control={control} register={register} errors={errors} name="documents" />
-                            </div>
-                        </div>
-
-                        {/* ------------------ SCREENING ------------------ */}
-                        <div className="rounded-2xl border border-gray-200 p-4">
-                            <div className="text-sm text-gray-900 font-semibold">Screening</div>
-                            <div className="text-xs text-gray-600 mt-1">Store interview date + optional link.</div>
-
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Screening Interview Date" info="Date of screening interview (optional)." error={errors.dateScreeningInterview?.message}>
-                                    <Input {...register("dateScreeningInterview")} type="date" />
-                                </Field>
-
-                                <Field
-                                    label="Screening Video Link (Optional)"
-                                    info="Paste a full URL like https://drive.google.com/... or https://youtube.com/..."
-                                    error={errors.screeningVideoLink?.message}
-                                >
-                                    <Input {...register("screeningVideoLink")} placeholder="https://..." />
-                                </Field>
-                            </div>
                         </div>
 
                         {/* ------------------ ACCOUNT (LOGIN) ------------------ */}
-                        <div className="rounded-2xl border border-gray-200 p-4">
-                            <div className="text-sm text-gray-900 font-semibold">Account</div>
-                            <div className="text-xs text-gray-600 mt-1">Candidate login credentials.</div>
+                        <div className="rounded-2xl border border-red-200 p-4">
+                            <div className="text-base text-red-600 font-semibold">Account</div>
+                            <div className="text-sm text-gray-800 mt-1">Candidate login credentials.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field label="Username" info="Login username (min 3 chars)." error={errors.username?.message}>
