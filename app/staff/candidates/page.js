@@ -79,7 +79,7 @@ function StatusPill({ status }) {
 function InfoChip({ label, value }) {
     return (
         <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
-            <span className="text-gray-600">{label}</span>
+            <span className="text-gray-800">{label}</span>
             <span className="text-gray-900">{value}</span>
         </span>
     );
@@ -242,11 +242,11 @@ export default function CandidatesPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <div className="text-lg text-gray-900">Candidates</div>
-                                <div className="text-sm text-gray-600">Connected to Strapi • {headerText}</div>
+                                <div className="text-sm text-gray-800">Connected to Strapi • {headerText}</div>
                             </div>
 
                             <div className="flex w-full sm:w-auto items-center gap-2 sm:justify-end">
-                                <div className="relative w-full sm:w-72">
+                                <div className="relative w-full sm:w-lg">
                                     <input
                                         value={search}
                                         onChange={(e) => {
@@ -254,9 +254,9 @@ export default function CandidatesPage() {
                                             setPage(1);
                                         }}
                                         placeholder="Search (name/ref/phone/email/role)..."
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-amber-200"
+                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none  focus:border-red-200 focus:ring-2 focus:ring-red-300"
                                     />
-                                    <span className="pointer-events-none absolute right-3 top-2.5 text-gray-400">⌕</span>
+                                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 text-2xl">⌕</span>
                                 </div>
 
                                 <button
@@ -282,7 +282,7 @@ export default function CandidatesPage() {
                     <div className="w-full overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr className="text-xs uppercase text-gray-600">
+                                <tr className="text-xs uppercase text-gray-800">
                                     <th className="px-3 py-2">Id</th>
                                     <th className="px-3 py-2">Profile</th>
                                     <th className="px-3 py-2">Ref</th>
@@ -299,7 +299,7 @@ export default function CandidatesPage() {
                             <tbody>
                                 {loadingTable ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-600">
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
                                             Loading candidates...
                                         </td>
                                     </tr>
@@ -311,7 +311,7 @@ export default function CandidatesPage() {
                                     </tr>
                                 ) : rows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-600">
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
                                             No candidates found.
                                         </td>
                                     </tr>
@@ -377,7 +377,7 @@ export default function CandidatesPage() {
 
                     {/* pagination (server-side) */}
                     <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-white px-4 py-3">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-800">
                             Page {page} of {pageCount}
                             <span className="ml-2 text-xs text-gray-500">({total} candidates)</span>
                         </div>
@@ -419,8 +419,8 @@ export default function CandidatesPage() {
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                     <div className="text-lg sm:text-xl truncate">Candidate Profile</div>
-                                    <div className="text-sm text-gray-600 truncate">
-                                        {selectedCandidate.fullName} • {selectedCandidate.referenceNumber}
+                                    <div className="text-sm text-gray-800 truncate">
+                                        Reference No: {selectedCandidate.referenceNumber}
                                     </div>
                                 </div>
 
@@ -462,13 +462,13 @@ export default function CandidatesPage() {
                                             />
                                             <div>
                                                 <div className="text-xl text-red-700">{detail?.formDefaults?.fullName || selectedCandidate.fullName}</div>
-                                                <div className="text-sm text-gray-600">
+                                                <div className="text-sm text-gray-800">
                                                     {rolesLabel(selectedCandidate.job_roles || [])} •{" "}
                                                     <span className="font-medium">{detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus || "—"}</span>
                                                 </div>
 
                                                 <div className="mt-2 flex flex-wrap gap-2">
-                                                    <InfoChip label="Experience:" value={`${detail?.formDefaults?.numberOfExperience ?? 0}y`} />
+                                                    <InfoChip label="Experience:" value={`${detail?.formDefaults?.numberOfExperience ?? 0}Y`} />
                                                     <InfoChip label="Employed:" value={detail?.formDefaults?.currentlyEmployed ? "Yes" : "No"} />
                                                     <InfoChip label="Source:" value={detail?.formDefaults?.source || "—"} />
                                                 </div>
@@ -485,7 +485,7 @@ export default function CandidatesPage() {
                                     </div>
 
                                     {/* Details */}
-                                    <div className="mt-4 rounded-xl border border-gray-200 p-3">
+                                    <div className="mt-4 rounded-xl border border-gray-400 p-3 ">
                                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                             {[
                                                 ["Reference", detail?.formDefaults?.referenceNumber || selectedCandidate.referenceNumber],
@@ -500,22 +500,33 @@ export default function CandidatesPage() {
                                                 ["Marital Status", detail?.formDefaults?.maritalStatusList],
                                                 ["Seasonal Status", detail?.formDefaults?.seasonalStatusList],
                                                 ["English Level", detail?.formDefaults?.englishLevelList],
+
+                                                ["Previous Company", detail?.formDefaults?.previousCompany],
+                                                ["Previous Job Experience", `${detail?.formDefaults?.previousJobExperiece ?? 0}Y`],
+
+                                                ["Current Company", detail?.formDefaults?.currentCompany],
+                                                ["Current Job Experience", `${detail?.formDefaults?.currentJobExperiece ?? 0}Y`],
+
                                                 ["Passport Expiry", detail?.formDefaults?.passportExpireDate],
+
+
+
+
                                             ].map(([k, v]) => (
-                                                <div className="text-xs" key={k}>
-                                                    <div className="text-gray-500">{k}</div>
+                                                <div className="text-sm" key={k}>
+                                                    <div className="text-gray-700 ">{k}</div>
                                                     <div className="text-gray-800 break-words">{v || "—"}</div>
                                                 </div>
                                             ))}
                                         </div>
 
                                         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            <div className="text-xs">
-                                                <div className="text-gray-500">Short Summary</div>
+                                            <div className="text-sm">
+                                                <div className="text-gray-700">Short Summary</div>
                                                 <div className="text-gray-800">{detail?.formDefaults?.shortSummary || "—"}</div>
                                             </div>
-                                            <div className="text-xs">
-                                                <div className="text-gray-500">Private Notes</div>
+                                            <div className="text-sm">
+                                                <div className="text-gray-700">Private Notes</div>
                                                 <div className="text-gray-800">{detail?.formDefaults?.privateNotes || "—"}</div>
                                             </div>
                                         </div>
@@ -523,9 +534,9 @@ export default function CandidatesPage() {
 
                                     {/* Passport + Videos */}
                                     <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-                                        <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="rounded-xl border border-gray-400 p-3">
                                             <div className="flex items-center justify-between gap-2">
-                                                <div className="text-sm text-gray-800">Passport</div>
+                                                <div className="text-base text-gray-800">Passport</div>
                                                 {detail?.existingMedia?.passport?.url ? (
                                                     <a
                                                         href={detail.existingMedia.passport.url}
@@ -539,10 +550,10 @@ export default function CandidatesPage() {
                                                     <span className="text-xs text-gray-500">No file</span>
                                                 )}
                                             </div>
-                                            <div className="text-xs text-gray-500 mt-2">Expiry: {detail?.formDefaults?.passportExpireDate || "—"}</div>
+                                            <div className="text-xs text-gray-800 mt-2">Expiry: {detail?.formDefaults?.passportExpireDate || "—"}</div>
                                         </div>
 
-                                        <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="rounded-xl border border-gray-400 p-3">
                                             <div className="text-sm text-gray-800">Working Video</div>
                                             <div className="mt-2">
                                                 {detail?.existingMedia?.workingVideo?.url ? (
@@ -555,7 +566,7 @@ export default function CandidatesPage() {
                                             </div>
                                         </div>
 
-                                        <div className="rounded-xl border border-gray-200 p-3">
+                                        <div className="rounded-xl border border-gray-400 p-3">
                                             <div className="text-sm text-gray-800">MI Screening Video</div>
                                             <div className="mt-2">
                                                 {detail?.existingMedia?.miScreeningVideo?.url ? (
@@ -570,23 +581,25 @@ export default function CandidatesPage() {
                                                 ) : (
                                                     <div className="text-xs text-gray-500">None</div>
                                                 )}
+
                                             </div>
+                                            <div className="text-xs text-gray-800 mt-2">Screening Date: {detail?.formDefaults?.dateScreeningInterview || "—"}</div>
                                         </div>
                                     </div>
 
                                     {/* Documents */}
-                                    <div className="mt-4 rounded-xl border border-gray-200 p-3">
+                                    <div className="mt-4 rounded-xl border border-gray-400 p-3">
                                         <div className="text-sm text-gray-800">Documents ({detail?.formDefaults?.documents?.length || 0})</div>
 
                                         <div className="mt-3 space-y-2">
                                             {(detail?.formDefaults?.documents || []).map((d, idx) => (
                                                 <div
                                                     key={idx}
-                                                    className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+                                                    className="rounded-xl border border-gray-400 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
                                                 >
                                                     <div className="flex-1 min-w-0">
                                                         <div className="text-sm text-gray-800 truncate">{d.name || "—"}</div>
-                                                        <div className="text-xs text-gray-600">
+                                                        <div className="text-xs text-gray-800">
                                                             Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
                                                         </div>
                                                     </div>
@@ -614,7 +627,7 @@ export default function CandidatesPage() {
                                     {/* CV Viewer */}
                                     <div className="mt-4">
                                         <div className="flex items-center justify-between gap-2">
-                                            <div className="text-sm text-gray-800">CV Preview</div>
+                                            <div className="text-sm text-gray-800">CV Preview </div>
                                             {detail?.existingMedia?.CV?.url ? (
                                                 <a href={detail.existingMedia.CV.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
                                                     Open / Download
@@ -625,7 +638,7 @@ export default function CandidatesPage() {
                                         </div>
 
                                         {detail?.existingMedia?.CV?.url ? (
-                                            <div className="mt-2 rounded-xl border border-gray-200 overflow-hidden relative">
+                                            <div className="mt-2 rounded-xl border border-gray-400 overflow-hidden relative">
                                                 {isPdfUrl(detail.existingMedia.CV.url) ? (
                                                     <>
                                                         {cvLoading && (
@@ -637,7 +650,7 @@ export default function CandidatesPage() {
                                                         {cvFailed ? (
                                                             <div className="p-4 sm:p-6">
                                                                 <div className="text-red-700">CV preview failed to load</div>
-                                                                <p className="text-sm text-gray-600 mt-2">Use Open / Download to open in new tab.</p>
+                                                                <p className="text-sm text-gray-800 mt-2">Use Open / Download to open in new tab.</p>
                                                             </div>
                                                         ) : (
                                                             <div className="h-[65vh] sm:h-[78vh]">
@@ -663,7 +676,7 @@ export default function CandidatesPage() {
                                                         <img
                                                             src={detail.existingMedia.CV.url}
                                                             alt="CV"
-                                                            className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-200 bg-white"
+                                                            className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-400 bg-white"
                                                         />
                                                     </div>
                                                 )}
@@ -680,7 +693,7 @@ export default function CandidatesPage() {
                             <div className="mt-4 flex justify-end">
                                 <button
                                     onClick={closeCandidate}
-                                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    className="rounded-lg border border-gray-400 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                     type="button"
                                 >
                                     Close

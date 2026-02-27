@@ -94,7 +94,7 @@ export function Field({ label, hint, info, error, children }) {
                 <div className="text-sm text-gray-900">{label}</div>
                 <InfoTip text={info} />
             </div>
-            {hint ? <div className="text-xs ml-3 text-gray-500">{hint}</div> : null}
+            {hint ? <div className="text-base ml-3 text-gray-700">{hint}</div> : null}
             {children}
             {error ? <div className="text-xs text-red-700">{error}</div> : null}
         </div>
@@ -124,7 +124,7 @@ export function Select({ children, ...props }) {
 
             {/* ✅ custom arrow (move left/right by changing right-4) */}
             <svg
-                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500"
+                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-700"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
@@ -164,7 +164,7 @@ export function PasswordInput({ value, onChange, placeholder, error }) {
                 <button
                     type="button"
                     onClick={() => setShow((s) => !s)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-500 hover:text-gray-800"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-700 hover:text-gray-800"
                     title={show ? "Hide" : "Show"}
                 >
                     {show ? (
@@ -209,7 +209,7 @@ export function DropzoneBox({ label, acceptText, multiple, value, onChange, erro
                 <div className="text-sm text-gray-700">{label}</div>
                 <InfoTip text={info} />
             </div>
-            {hint ? <div className="text-xs text-gray-500">{hint}</div> : null}
+            {hint ? <div className="text-xs text-gray-700">{hint}</div> : null}
 
             <div
                 {...getRootProps()}
@@ -218,16 +218,16 @@ export function DropzoneBox({ label, acceptText, multiple, value, onChange, erro
             >
                 <input {...getInputProps()} />
                 <div className="text-gray-700">Click to add an asset or drag & drop</div>
-                <div className="text-xs text-gray-500 mt-1">{acceptText}</div>
+                <div className="text-xs text-gray-700 mt-1">{acceptText}</div>
 
                 <div className="mt-3 space-y-2">
                     {files.length === 0 ? (
-                        <div className="text-xs text-gray-500">No file selected.</div>
+                        <div className="text-xs text-gray-700">No file selected.</div>
                     ) : (
                         files.map((f, idx) => (
                             <div key={`${f.name}-${idx}`} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
                                 <div className="text-xs text-gray-900 truncate">{f.name}</div>
-                                <div className="text-xs text-gray-500">{Math.round((f.size || 0) / 1024)} KB</div>
+                                <div className="text-xs text-gray-700">{Math.round((f.size || 0) / 1024)} KB</div>
                             </div>
                         ))
                     )}
@@ -288,11 +288,11 @@ export function MultiSelectSearchIds({
                 <div className="text-sm text-gray-700">{label}</div>
                 {info ? <InfoTip text={info} /> : null}
             </div>
-            {hint ? <div className="text-xs text-gray-500">{hint}</div> : null}
+            {hint ? <div className="text-xs text-gray-700">{hint}</div> : null}
 
             <div className="flex flex-wrap gap-2">
                 {selectedOptions.length === 0 ? (
-                    <div className="text-xs text-gray-500">No role selected.</div>
+                    <div className="text-xs text-gray-700">No role selected.</div>
                 ) : (
                     selectedOptions.map((o) => {
                         const id = getValue(o);
@@ -304,7 +304,7 @@ export function MultiSelectSearchIds({
                                 {getLabel(o)}
                                 <button
                                     type="button"
-                                    className="text-gray-500 hover:text-gray-900"
+                                    className="text-gray-700 hover:text-gray-900"
                                     onClick={() => onChange(selectedIds.filter((x) => x !== id))}
                                     title="Remove"
                                 >
@@ -335,7 +335,7 @@ export function MultiSelectSearchIds({
                                 className="w-full rounded-xl border border-gray-400 bg-white px-3 py-2 text-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-200"
                             />
                             <div className="mt-2 flex items-center justify-between">
-                                <div className="text-xs text-gray-500">{filtered.length} results</div>
+                                <div className="text-xs text-gray-700">{filtered.length} results</div>
                                 <button type="button" className="text-xs text-red-700 hover:underline" onClick={() => onChange([])}>
                                     Clear all
                                 </button>

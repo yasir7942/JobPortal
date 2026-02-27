@@ -492,7 +492,12 @@ export default function NewCandidatePage() {
                                 </Field>
 
                                  ---- */}
-                                <Field label="Full Name" hint="" info="Full name of candidate" error={errors.fullName?.message}>
+                                <Field
+                                    label={
+                                        <>
+                                            Full Name <span className="text-red-600 text-lg ">*</span>
+                                        </>
+                                    } hint="" info="Full name of candidate" error={errors.fullName?.message}>
                                     <Input {...register("fullName")} placeholder="First + Middle + Last" />
                                 </Field>
 
@@ -527,7 +532,11 @@ export default function NewCandidatePage() {
 
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="First Name" info="Candidate first name as per passport." error={errors.firstName?.message}>
+                                <Field label={
+                                    <>
+                                        First Name <span className="text-red-600 text-lg ">*</span>
+                                    </>
+                                } info="Candidate first name as per passport." error={errors.firstName?.message}>
                                     <Input {...register("firstName")} />
                                 </Field>
                                 <Field label="Last Name" info="Candidate last name as per passport." error={errors.lastName?.message}>
@@ -565,7 +574,7 @@ export default function NewCandidatePage() {
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field label="Mobile" info="Phone number 7–20 chars." error={errors.mobile?.message}>
-                                    <Input {...register("mobile")} placeholder="+92 3xx xxxxxxx" />
+                                    <Input {...register("mobile")} placeholder="+971 5xx xxxxxxx" />
                                 </Field>
 
 
@@ -854,17 +863,31 @@ export default function NewCandidatePage() {
                             <div className="text-sm text-gray-800 mt-1">Candidate login credentials.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Username" info="Login username (min 3 chars)." error={errors.username?.message}>
+                                <Field
+                                    label={
+                                        <>
+                                            Username <span className="text-red-600 text-lg ">*</span>
+                                        </>
+                                    }
+                                    info="Login username (min 3 chars)." error={errors.username?.message}>
                                     <Input {...register("username")} />
                                 </Field>
 
-                                <Field label="Email" info="Login email." error={errors.email?.message}>
+                                <Field label={
+                                    <>
+                                        Email <span className="text-red-600 text-lg ">*</span>
+                                    </>
+                                } info="Login email." error={errors.email?.message}>
                                     <Input {...register("email")} />
                                 </Field>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Password" info="Min 8 characters." error={errors.password?.message}>
+                                <Field label={
+                                    <>
+                                        Password <span className="text-red-600 text-lg ">*</span>
+                                    </>
+                                } info="Min 8 characters." error={errors.password?.message}>
                                     <Controller
                                         control={control}
                                         name="password"
@@ -879,7 +902,11 @@ export default function NewCandidatePage() {
                                     />
                                 </Field>
 
-                                <Field label="Retype Password" info="Must match password." error={errors.retypePassword?.message}>
+                                <Field label={
+                                    <>
+                                        Retype Password <span className="text-red-600 text-lg ">*</span>
+                                    </>
+                                } info="Must match password." error={errors.retypePassword?.message}>
                                     <Controller
                                         control={control}
                                         name="retypePassword"

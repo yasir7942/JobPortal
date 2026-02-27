@@ -501,7 +501,7 @@ export default function EditCandidatePage() {
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field label="Mobile" info="Phone number 7–20 chars." error={errors.mobile?.message}>
-                                    <Input {...register("mobile")} placeholder="+92 3xx xxxxxxx" />
+                                    <Input {...register("mobile")} placeholder="+971 5xx xxxxxxx" />
                                 </Field>
                             </div>
                         </div>

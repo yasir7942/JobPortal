@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import Header from "@/app/components/layouts/staff/Header";
 
 import ENUMS from "../../../../config/enums.json";
-
 import ContactFieldArray from "@/app/staff/ui/ContactFieldArray";
 
 import { useForm, Controller } from "react-hook-form";
@@ -19,16 +19,16 @@ import {
     Textarea,
     DropzoneBox,
     PasswordInput,
+    fetchJsonSafe,
     normalizePhone,
     fileExtOk,
 } from "@/app/staff/ui/CandidateFormUI";
 
 /* ------------------------------------------------------------------ */
-/* Zod Schema (Strapi Client fields + Account fields) */
+/* Schema (EDIT) */
 /* ------------------------------------------------------------------ */
-const ClientCreateSchema = z
+const ClientEditSchema = z
     .object({
-        // client fields
         companyName: z.string().min(1, "Company name is required"),
         ownerName: z.string().optional(),
         city: z.string().optional(),
@@ -36,7 +36,6 @@ const ClientCreateSchema = z
         phone: z.string().optional(),
         website: z.string().optional(),
 
-        // dropdowns (ends with List => dropdown)
         countryList: z.string().optional(),
         industriesList: z.string().optional(),
         companySizeList: z.string().optional(),
@@ -48,7 +47,7 @@ const ClientCreateSchema = z
         // media
         logo: z.any().optional(),
 
-        // repeatable component
+        // component
         contactList: z
             .array(
                 z.object({
@@ -60,23 +59,43 @@ const ClientCreateSchema = z
             )
             .default([]),
 
-        // account section
-        username: z.string().min(3, "Username must be at least 3 characters"),
+        // account (edit)
+        username: z.string().min(1, "Username is required"),
         email: z.string().email("Invalid email"),
-        password: z.string().min(8, "Password must be at least 8 characters"),
-        retypePassword: z.string().min(8, "Retype password is required"),
+
+        // password optional in edit
+        password: z.string().optional(),
+        retypePassword: z.string().optional(),
     })
     .superRefine((val, ctx) => {
-        // password match
-        if (val.password !== val.retypePassword) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["retypePassword"],
-                message: "Passwords do not match",
-            });
+        // optional password change
+        const p = String(val.password || "").trim();
+        const rp = String(val.retypePassword || "").trim();
+        if (p || rp) {
+            if (p.length < 4) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["password"],
+                    message: "Password must be at least 4 characters",
+                });
+            }
+            if (!rp) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["retypePassword"],
+                    message: "Retype password is required",
+                });
+            }
+            if (p && rp && p !== rp) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["retypePassword"],
+                    message: "Passwords do not match",
+                });
+            }
         }
 
-        // logo validation (image only)
+        // logo validation (image only) if new file
         if (val.logo && val.logo instanceof File) {
             if (!fileExtOk(val.logo, [".jpg", ".jpeg", ".png", ".webp"])) {
                 ctx.addIssue({
@@ -89,8 +108,8 @@ const ClientCreateSchema = z
 
         // phone validation (only if provided)
         if (val.phone) {
-            const p = String(val.phone).trim();
-            if (p.length < 7 || p.length > 30) {
+            const p2 = String(val.phone).trim();
+            if (p2.length < 7 || p2.length > 30) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
                     path: ["phone"],
@@ -99,7 +118,7 @@ const ClientCreateSchema = z
             }
         }
 
-        // contactList validation: if a row has any field filled, require name
+        // contactList: if row has any value, require name
         (val.contactList || []).forEach((c, i) => {
             const any =
                 (c?.name || "").trim() ||
@@ -130,18 +149,29 @@ const ClientCreateSchema = z
         });
     });
 
-export default function NewClientPage() {
+/* ------------------------------------------------------------------ */
+/* Page */
+/* ------------------------------------------------------------------ */
+export default function EditClientPage() {
+    const params = useParams();
+    const documentId = params?.documentId;
+
     const [submitMsg, setSubmitMsg] = useState("");
+    const [loading, setLoading] = useState(true);
+
+    const [existingMedia, setExistingMedia] = useState({
+        logo: { url: "", name: "", id: null },
+    });
 
     const {
         register,
         control,
         watch,
         handleSubmit,
-        formState: { errors, isSubmitting },
         reset,
+        formState: { errors, isSubmitting },
     } = useForm({
-        resolver: zodResolver(ClientCreateSchema),
+        resolver: zodResolver(ClientEditSchema),
         defaultValues: {
             companyName: "",
             ownerName: "",
@@ -168,12 +198,35 @@ export default function NewClientPage() {
         },
     });
 
+    // fetch client -> reset form
+    useEffect(() => {
+        if (!documentId) return;
+
+        (async () => {
+            setLoading(true);
+            setSubmitMsg("");
+            try {
+                // You will create this API route (or already have similar):
+                // should return: { formDefaults: {...}, existingMedia: {...} }
+                const json = await fetchJsonSafe(`/api/clients/getclient/${documentId}`);
+                reset(json?.formDefaults || {});
+                setExistingMedia(json?.existingMedia || existingMedia);
+            } catch (e) {
+                console.error(e);
+                setSubmitMsg(`Error: ${e.message || "Failed to load client"} ❌`);
+            } finally {
+                setLoading(false);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [documentId, reset]);
+
     const logo = watch("logo");
 
     const logoPreview = useMemo(() => {
         if (logo instanceof File) return URL.createObjectURL(logo);
-        return "";
-    }, [logo]);
+        return existingMedia?.logo?.url || "";
+    }, [logo, existingMedia]);
 
     useEffect(() => {
         if (!(logo instanceof File)) return;
@@ -184,17 +237,15 @@ export default function NewClientPage() {
     const onSubmit = async (formData) => {
         setSubmitMsg("");
 
-        // normalize phone
         if (formData.phone) formData.phone = normalizePhone(formData.phone);
 
-        // normalize contacts mobiles
         const contacts = (formData.contactList || []).map((c) => ({
             ...c,
             mobile: c?.mobile ? normalizePhone(c.mobile) : c?.mobile,
         }));
 
         try {
-            // IMPORTANT: don't send file inside JSON
+            // JSON without File objects (same as candidate edit style) :contentReference[oaicite:4]{index=4}
             const payloadData = {
                 ...formData,
                 logo: undefined,
@@ -204,11 +255,12 @@ export default function NewClientPage() {
             const fd = new FormData();
             fd.append("data", JSON.stringify(payloadData));
 
+            // only send new logo if selected
             if (formData.logo instanceof File) {
                 fd.append("files.logo", formData.logo);
             }
 
-            const res = await fetch("/api/clients/create", {
+            const res = await fetch(`/api/clients/update/${documentId}`, {
                 method: "POST",
                 body: fd,
             });
@@ -216,12 +268,25 @@ export default function NewClientPage() {
             const json = await res.json();
             if (!res.ok) throw new Error(json?.error || "Client not saved");
 
-            setSubmitMsg("Client + Account created ✅");
-            reset();
+            setSubmitMsg("Client updated ✅");
         } catch (e) {
-            setSubmitMsg(`Error: ${e?.message || "Client not saved"} ❌`);
+            console.error(e);
+            setSubmitMsg(`Error: ${e.message || "Client not saved"} ❌`);
         }
     };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50">
+                <Header />
+                <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-6">
+                        Loading client...
+                    </div>
+                </main>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -232,10 +297,8 @@ export default function NewClientPage() {
                     <header className="border-b border-gray-200 bg-white px-4 py-4">
                         <div className="flex items-center justify-between gap-2">
                             <div>
-                                <div className="text-lg text-gray-900 font-semibold">Create Client</div>
-                                <div className="text-sm text-gray-600">
-                                    Create a new client company and login account.
-                                </div>
+                                <div className="text-lg text-gray-900 font-semibold">Edit Client</div>
+                                <div className="text-sm text-gray-600">Update client details.</div>
                             </div>
 
                             <Link
@@ -294,7 +357,7 @@ export default function NewClientPage() {
                         {/* ------------------ LOGO ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Logo</div>
-                            <div className="text-sm text-gray-800 mt-1">Upload client logo (optional).</div>
+                            <div className="text-sm text-gray-800 mt-1">Upload/replace client logo.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Controller
@@ -318,8 +381,13 @@ export default function NewClientPage() {
                                         <img
                                             src={logoPreview}
                                             className="h-40 w-40 rounded-2xl object-cover border border-gray-200 bg-white"
-                                            alt="logo preview"
+                                            alt=""
                                         />
+                                        {existingMedia?.logo?.url && !(logo instanceof File) ? (
+                                            <div className="mt-2 text-xs text-gray-600">
+                                                Current: {existingMedia.logo.name || "logo"}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
                             </div>
@@ -334,7 +402,7 @@ export default function NewClientPage() {
                                 <Field label="Country" error={errors.countryList?.message}>
                                     <Select {...register("countryList")}>
                                         <option value="">Choose here</option>
-                                        {(ENUMS.countries || []).map((x) => (
+                                        {(ENUMS.countries || ENUMS.countryList || []).map((x) => (
                                             <option key={x} value={x}>
                                                 {x}
                                             </option>
@@ -345,8 +413,7 @@ export default function NewClientPage() {
                                 <Field label="Industry" error={errors.industriesList?.message}>
                                     <Select {...register("industriesList")}>
                                         <option value="">Choose here</option>
-                                        {/* handle your enum typo too: industoryList */}
-                                        {(ENUMS.industries || ENUMS.industriesList || []).map((x) => (
+                                        {(ENUMS.industries || ENUMS.industoryList || ENUMS.industriesList || []).map((x) => (
                                             <option key={x} value={x}>
                                                 {x}
                                             </option>
@@ -368,7 +435,7 @@ export default function NewClientPage() {
                                 <Field label="Status" error={errors.statusList?.message}>
                                     <Select {...register("statusList")}>
                                         <option value="">Choose here</option>
-                                        {(ENUMS.status || []).map((x) => (
+                                        {(ENUMS.status || ENUMS.statusList || []).map((x) => (
                                             <option key={x} value={x}>
                                                 {x}
                                             </option>
@@ -406,44 +473,23 @@ export default function NewClientPage() {
                         {/* ------------------ CONTACT LIST ------------------ */}
                         <ContactFieldArray control={control} register={register} errors={errors} name="contactList" />
 
-                        {/* ------------------ ACCOUNT (LOGIN) ------------------ */}
+                        {/* ------------------ ACCOUNT ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Account</div>
-                            <div className="text-sm text-gray-800 mt-1">Candidate login credentials.</div>
+                            <div className="text-sm text-gray-800 mt-1">Client login credentials.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field
-                                    label={
-                                        <>
-                                            Username <span className="text-red-600 text-lg">*</span>
-                                        </>
-                                    }
-                                    error={errors.username?.message}
-                                >
-                                    <Input {...register("username")} placeholder="username" />
+                                <Field label="Username" error={errors.username?.message}>
+                                    <Input {...register("username")} />
                                 </Field>
 
-                                <Field
-                                    label={
-                                        <>
-                                            Email <span className="text-red-600 text-lg">*</span>
-                                        </>
-                                    }
-                                    error={errors.email?.message}
-                                >
-                                    <Input {...register("email")} placeholder="email@example.com" />
+                                <Field label="Email" error={errors.email?.message}>
+                                    <Input {...register("email")} />
                                 </Field>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field
-                                    label={
-                                        <>
-                                            Password <span className="text-red-600 text-lg">*</span>
-                                        </>
-                                    }
-                                    error={errors.password?.message}
-                                >
+                                <Field label="Password" info="Leave empty if you don't want to change." error={errors.password?.message}>
                                     <Controller
                                         control={control}
                                         name="password"
@@ -451,21 +497,15 @@ export default function NewClientPage() {
                                             <PasswordInput
                                                 value={field.value}
                                                 onChange={field.onChange}
-                                                placeholder="Min 8 characters"
+                                                autoComplete="new-password"
+                                                placeholder="If password change required"
                                                 error={errors.password?.message}
                                             />
                                         )}
                                     />
                                 </Field>
 
-                                <Field
-                                    label={
-                                        <>
-                                            Retype Password <span className="text-red-600 text-lg">*</span>
-                                        </>
-                                    }
-                                    error={errors.retypePassword?.message}
-                                >
+                                <Field label="Retype Password" info="Must match password." error={errors.retypePassword?.message}>
                                     <Controller
                                         control={control}
                                         name="retypePassword"
@@ -473,7 +513,7 @@ export default function NewClientPage() {
                                             <PasswordInput
                                                 value={field.value}
                                                 onChange={field.onChange}
-                                                placeholder="Retype password"
+                                                placeholder="Retype second time"
                                                 error={errors.retypePassword?.message}
                                             />
                                         )}

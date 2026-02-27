@@ -4,84 +4,39 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/app/components/layouts/staff/Header";
 
-/** ✅ Default logo (inline SVG as data-uri) */
+/* ✅ Default logo fallback */
 const DEFAULT_LOGO =
     "data:image/svg+xml;utf8," +
     encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300">
-    <defs>
-      <linearGradient id="g" x1="0" x2="1">
-        <stop offset="0" stop-color="#f3f4f6"/>
-        <stop offset="1" stop-color="#e5e7eb"/>
-      </linearGradient>
-    </defs>
-    <rect width="100%" height="100%" fill="url(#g)"/>
-    <circle cx="150" cy="120" r="46" fill="#d1d5db"/>
-    <rect x="70" y="185" width="160" height="26" rx="13" fill="#d1d5db"/>
-    <text x="150" y="255" text-anchor="middle" font-family="Arial" font-size="18" fill="#6b7280">
-      No Logo
+    <rect width="100%" height="100%" fill="#f3f4f6"/>
+    <rect x="70" y="90" width="160" height="120" rx="18" fill="#d1d5db"/>
+    <text x="150" y="235" text-anchor="middle" font-family="Arial" font-size="18" fill="#6b7280">
+      Logo
     </text>
   </svg>
 `);
 
-/** Dummy clients (replace later with Strapi fetch) */
-const DUMMY_CLIENTS = Array.from({ length: 35 }).map((_, i) => {
-    const id = 2001 + i;
+function safeImgSrc(src) {
+    const s = (src || "").trim();
+    return s ? s : DEFAULT_LOGO;
+}
 
-    const companies = [
-        "Atlantic Group",
-        "Chempol Chemicals",
-        "BathStore.pk",
-        "EngineMover",
-        "Atlantic Oil Store",
-        "Atlantic Perfumes",
-        "Sailo Sanitary",
-        "ArkVanity",
-    ];
-
-    const owners = ["Yasir Aslam", "Usman Ali", "Bilal Ahmed", "Sara Khan", "Omar Hassan", "Ayesha Malik"];
-    const countries = ["Pakistan", "UAE", "KSA", "Canada", "Egypt"];
-    const cities = ["Karachi", "Lahore", "Dubai", "Riyadh", "Toronto", "Cairo"];
-    const statuses = ["Active", "Inactive", "Onboarded"];
-
-    // Some clients have no logo (to test fallback)
-    const logos = [
-        "https://upload.wikimedia.org/wikipedia/commons/a/ab/Logo_TV_2015.png",
-        "https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png",
-        "", // missing
-        null, // missing
-        "https://invalid-domain-xyz123.com/logo.png", // broken
-    ];
-
-    const companyName = companies[i % companies.length] + " " + (i + 1);
-    const ownerName = owners[i % owners.length];
-    const country = countries[i % countries.length];
-    const city = cities[i % cities.length];
-    const status = statuses[i % statuses.length];
-
-    const contactList = Array.from({ length: (i % 4) + 1 }).map((__, j) => ({
-        name: ["Bilal Ahmed", "Sara Khan", "Zain Ali", "Hina Noor"][j % 4],
-        designation: ["HR Manager", "Operations", "Procurement", "Accounts"][j % 4],
-        mobile: `+92 3${(i % 10) + 1}${j} ${1000000 + i + j}`,
-        remarks: j === 0 ? "Primary contact" : "Secondary contact",
-    }));
-
-    return {
-        id,
-        logo: logos[i % logos.length],
-        companyName,
-        ownerName,
-        country,
-        city,
-        address: `Street ${i + 1}, Block ${(i % 10) + 1}`,
-        phone: `+92 30${(i % 10) + 1} ${1000000 + i}`,
-        website: i % 3 === 0 ? "https://example.com" : "",
-        email: `client${id}@example.com`,
-        username: `client.${id}`,
-        status,
-        contactList,
-    };
-});
+async function fetchJsonSafe(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    const text = await res.text();
+    let json;
+    try {
+        json = text ? JSON.parse(text) : null;
+    } catch {
+        throw new Error(
+            `API returned non-JSON (status ${res.status}). First bytes: ${text.slice(0, 80)}`
+        );
+    }
+    if (!res.ok || json?.ok === false)
+        throw new Error(json?.error || `Request failed (${res.status})`);
+    return json;
+}
 
 function StatusPill({ status }) {
     const s = (status || "").toLowerCase();
@@ -90,146 +45,166 @@ function StatusPill({ status }) {
             ? "border-green-200 bg-green-50 text-green-700"
             : s === "inactive"
                 ? "border-gray-200 bg-gray-50 text-gray-700"
-                : s === "onboarded"
-                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                : s === "blocked"
+                    ? "border-red-200 bg-red-50 text-red-700"
                     : "border-gray-200 bg-gray-50 text-gray-700";
 
-    return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${cls}`}>{status || "—"}</span>;
+    return (
+        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${cls}`}>
+            {status || "—"}
+        </span>
+    );
 }
 
 function InfoChip({ label, value }) {
     return (
         <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
-            <span className="text-gray-600">{label}</span>
+            <span className="text-gray-800">{label}</span>
             <span className="text-gray-900">{value}</span>
         </span>
     );
 }
 
-function getLogoSrc(logo) {
-    const s = (logo || "").trim();
-    return s ? s : DEFAULT_LOGO;
-}
-
 export default function ClientsPage() {
-    const [allClients] = useState(DUMMY_CLIENTS);
+    const pageSize = 15;
 
     const [search, setSearch] = useState("");
+    const [debouncedQ, setDebouncedQ] = useState("");
     const [page, setPage] = useState(1);
-    const pageSize = 12;
 
-    const [selectedClient, setSelectedClient] = useState(null);
+    const [rows, setRows] = useState([]);
+    const [pageCount, setPageCount] = useState(1);
+    const [total, setTotal] = useState(0);
 
-    // ✅ Hover preview (fixed, high z-index, not clipped)
-    const [hover, setHover] = useState({ show: false, x: 0, y: 0, client: null });
+    const [loadingTable, setLoadingTable] = useState(true);
+    const [tableError, setTableError] = useState("");
 
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return allClients;
+    // View modal
+    const [selected, setSelected] = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState("");
+    const [detail, setDetail] = useState(null);
 
-        return allClients.filter((c) => {
-            const hay = [
-                c.companyName,
-                c.ownerName,
-                c.country,
-                c.city,
-                c.status,
-                c.phone,
-                c.email,
-                c.username,
-            ]
-                .filter(Boolean)
-                .join(" ")
-                .toLowerCase();
-
-            return hay.includes(q);
-        });
-    }, [search, allClients]);
-
-    const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-    const rows = useMemo(() => {
-        const start = (page - 1) * pageSize;
-        return filtered.slice(start, start + pageSize);
-    }, [filtered, page, pageSize]);
-
+    // Debounce search (same as candidates)
     useEffect(() => {
-        if (page > pageCount) setPage(1);
-    }, [page, pageCount]);
+        const t = setTimeout(() => setDebouncedQ(search.trim()), 350);
+        return () => clearTimeout(t);
+    }, [search]);
 
-    function openClient(c) {
-        setSelectedClient(c);
+    async function loadClients(nextPage = page, q = debouncedQ) {
+        setLoadingTable(true);
+        setTableError("");
+        try {
+            const url = `/api/clients/list?page=${nextPage}&pageSize=${pageSize}&q=${encodeURIComponent(
+                q || ""
+            )}`;
+            const json = await fetchJsonSafe(url);
+            setRows(Array.isArray(json.items) ? json.items : []);
+            setPageCount(Number(json.pageCount || 1));
+            setTotal(Number(json.total || 0));
+        } catch (e) {
+            setTableError(e?.message || "Failed to load clients");
+            setRows([]);
+            setPageCount(1);
+            setTotal(0);
+        } finally {
+            setLoadingTable(false);
+        }
     }
 
-    function closeClient() {
-        setSelectedClient(null);
+    // Load table (server-side pagination)
+    useEffect(() => {
+        loadClients(page, debouncedQ);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page, debouncedQ]);
+
+    function closeModal() {
+        setSelected(null);
+        setDetail(null);
+        setDetailError("");
+        setDetailLoading(false);
     }
 
-    // ESC to close popup
+    // ESC to close modal
     useEffect(() => {
-        if (!selectedClient) return;
-        const onKey = (e) => e.key === "Escape" && closeClient();
+        if (!selected) return;
+        const onKey = (e) => e.key === "Escape" && closeModal();
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [selectedClient]);
+    }, [selected]);
 
-    // body scroll lock when popup open
+    // body scroll lock
     useEffect(() => {
-        if (!selectedClient) return;
+        if (!selected) return;
         const prev = document.body.style.overflow;
         document.body.style.overflow = "hidden";
         return () => (document.body.style.overflow = prev);
-    }, [selectedClient]);
+    }, [selected]);
 
-    // Hover helpers
-    function onLogoEnter(e, c) {
-        setHover({ show: true, x: e.clientX, y: e.clientY, client: c });
+    async function openClient(row) {
+        setSelected(row);
+        setDetail(null);
+        setDetailError("");
+        setDetailLoading(true);
+
+        try {
+            // You already created getclient route earlier:
+            const json = await fetchJsonSafe(`/api/clients/getclient/${row.documentId}`);
+            setDetail(json);
+        } catch (e) {
+            setDetailError(e?.message || "Failed to load client details");
+        } finally {
+            setDetailLoading(false);
+        }
     }
-    function onLogoMove(e) {
-        if (!hover.show) return;
-        setHover((prev) => ({ ...prev, x: e.clientX, y: e.clientY }));
-    }
-    function onLogoLeave() {
-        setHover({ show: false, x: 0, y: 0, client: null });
-    }
+
+    const headerText = useMemo(() => {
+        const q = (debouncedQ || "").trim();
+        if (!q) return `(${total} clients)`;
+        return `(${total} results for "${q}")`;
+    }, [debouncedQ, total]);
 
     return (
         <div className="min-h-screen bg-gray-50">
             <Header />
 
-            <div className="mt-10 p-6 font-bold text-3xl sm:text-5xl text-red-700 border-b border-gray-300">
+            <div className="mt-2 p-6 font-bold text-2xl sm:text-3xl text-red-700 border-b border-gray-300">
                 Clients
             </div>
 
             <main className="mt-10 mx-auto w-[95%] lg:w-[90%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                    {/* header */}
-                    <header className="border-b border-gray-200 bg-white px-4 py-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <header className="border-b border-gray-200 bg-white px-4 py-4 ">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between  ">
                             <div>
                                 <div className="text-lg text-gray-900">Clients</div>
-                                <div className="text-sm text-gray-600">Dummy data for now. Later connect Strapi.</div>
+                                <div className="text-sm text-gray-800">{headerText}</div>
                             </div>
 
-                            <div className="flex w-full sm:w-auto items-center gap-2 sm:justify-end">
-                                <Link
-                                    href="/staff/search-clients"
-                                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
-                                >
-                                    Advanced Search
-                                </Link>
-
-                                <div className="relative w-full sm:w-72">
+                            <div className="flex w-full sm:w-auto items-center gap-2 sm:justify-end  ">
+                                <div className="relative w-full sm:w-lg">
                                     <input
                                         value={search}
                                         onChange={(e) => {
                                             setSearch(e.target.value);
                                             setPage(1);
                                         }}
-                                        placeholder="Search in table..."
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-amber-200"
+                                        placeholder="Search (company/phone/email/country/status)..."
+                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none  focus:border-red-200 focus:ring-2 focus:ring-red-300"
                                     />
-                                    <span className="pointer-events-none absolute right-3 top-2.5 text-gray-400">⌕</span>
+                                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 text-2xl">
+                                        ⌕
+                                    </span>
                                 </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => loadClients(page, debouncedQ)}
+                                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                                    title="Reload from DB"
+                                >
+                                    Refresh
+                                </button>
 
                                 <Link
                                     href="/staff/client/new"
@@ -241,64 +216,82 @@ export default function ClientsPage() {
                         </div>
                     </header>
 
-                    {/* table */}
+                    {/* TABLE */}
                     <div className="w-full overflow-x-auto">
-                        <table className="min-w-[1250px] w-full text-left">
+                        <table className="w-full text-left">
                             <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr className="text-xs uppercase text-gray-600">
+                                <tr className="text-xs uppercase text-gray-800">
+                                    <th className="px-3 py-2">Id</th>
                                     <th className="px-3 py-2">Logo</th>
                                     <th className="px-3 py-2">Company</th>
-                                    <th className="px-3 py-2">Owner</th>
+                                    <th className="px-3 py-2">Phone</th>
                                     <th className="px-3 py-2">Country</th>
-                                    <th className="px-3 py-2">City</th>
-                                    <th className="px-3 py-2">Contacts</th>
+                                    <th className="px-3 py-2">Industry</th>
                                     <th className="px-3 py-2">Status</th>
+                                    <th className="px-3 py-2">Account</th>
                                     <th className="px-3 py-2">Actions</th>
                                 </tr>
                             </thead>
 
                             <tbody>
-                                {rows.length === 0 ? (
+                                {loadingTable ? (
                                     <tr>
-                                        <td colSpan={8} className="px-3 py-6 text-sm text-gray-600">
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
+                                            Loading clients...
+                                        </td>
+                                    </tr>
+                                ) : tableError ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-red-700">
+                                            {tableError}
+                                        </td>
+                                    </tr>
+                                ) : rows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
                                             No clients found.
                                         </td>
                                     </tr>
                                 ) : (
                                     rows.map((c) => (
-                                        <tr key={c.id} className="border-b border-gray-200 hover:bg-gray-50">
+                                        <tr
+                                            key={c.documentId || c.id}
+                                            className="border-b border-gray-200 hover:bg-gray-50"
+                                        >
+                                            <td className="px-3 py-2">{c.id}</td>
+
                                             <td className="px-3 py-2">
                                                 <img
-                                                    src={getLogoSrc(c.logo)}
+                                                    src={safeImgSrc(c.logoUrl)}
                                                     alt={c.companyName}
                                                     className="h-9 w-9 rounded-xl object-cover border border-gray-200 bg-white"
                                                     onError={(e) => {
                                                         e.currentTarget.onerror = null;
                                                         e.currentTarget.src = DEFAULT_LOGO;
                                                     }}
-                                                    onMouseEnter={(e) => onLogoEnter(e, c)}
-                                                    onMouseMove={onLogoMove}
-                                                    onMouseLeave={onLogoLeave}
                                                 />
                                             </td>
 
                                             <td className="px-3 py-2 text-sm text-gray-900">
-                                                {c.companyName}
-                                                <div className="text-xs text-gray-500">{c.email}</div>
+                                                {c.companyName || "—"}
+                                                <div className="text-xs text-gray-500">{c.city || "—"}</div>
                                             </td>
 
-                                            <td className="px-3 py-2 text-sm text-gray-800">{c.ownerName}</td>
-
-                                            <td className="px-3 py-2 text-sm text-gray-800">{c.country}</td>
-
-                                            <td className="px-3 py-2 text-sm text-gray-800">{c.city}</td>
-
-                                            <td className="px-3 py-2 text-sm text-gray-900">
-                                                {c.contactList?.length || 0}
+                                            <td className="px-3 py-2 text-sm text-gray-800">{c.phone || "—"}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-800">
+                                                {c.countryList || "—"}
+                                            </td>
+                                            <td className="px-3 py-2 text-sm text-gray-800">
+                                                {c.industriesList || "—"}
                                             </td>
 
                                             <td className="px-3 py-2">
-                                                <StatusPill status={c.status} />
+                                                <StatusPill status={c.statusList} />
+                                            </td>
+
+                                            <td className="px-3 py-2 text-sm text-gray-900">
+                                                {c.username || "—"}
+                                                <div className="text-xs text-gray-500">{c.email || "—"}</div>
                                             </td>
 
                                             <td className="px-3 py-2">
@@ -312,16 +305,10 @@ export default function ClientsPage() {
                                                     </button>
 
                                                     <Link
-                                                        href={`/staff/client/${c.id}/`}
+                                                        href={`/staff/client/${c.documentId}/`}
                                                         className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
                                                     >
                                                         Edit
-                                                    </Link>
-                                                    <Link
-                                                        href={`/client/jobs/${c.id}/`}
-                                                        className="rounded-lg border border-red-600 bg-white px-6 py-1.5 text-sm text-gray-700 hover:text-white hover:bg-red-600"
-                                                    >
-                                                        Jobs
                                                     </Link>
                                                 </div>
                                             </td>
@@ -334,16 +321,16 @@ export default function ClientsPage() {
 
                     {/* pagination */}
                     <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-white px-4 py-3">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-800">
                             Page {page} of {pageCount}
-                            <span className="ml-2 text-xs text-gray-500">({filtered.length} clients)</span>
+                            <span className="ml-2 text-xs text-gray-500">({total} clients)</span>
                         </div>
 
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
                                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                disabled={page <= 1}
+                                disabled={page <= 1 || loadingTable}
                                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                             >
                                 Prev
@@ -351,7 +338,7 @@ export default function ClientsPage() {
                             <button
                                 type="button"
                                 onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                                disabled={page >= pageCount}
+                                disabled={page >= pageCount || loadingTable}
                                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                             >
                                 Next
@@ -360,75 +347,38 @@ export default function ClientsPage() {
                     </div>
                 </div>
 
-                {/* ✅ Hover Preview */}
-                {hover.show && hover.client && (
-                    <div
-                        style={{
-                            position: "fixed",
-                            left: Math.min(hover.x + 18, window.innerWidth - 260),
-                            top: Math.min(hover.y - 80, window.innerHeight - 260),
-                            zIndex: 9999,
-                            width: 240,
-                            pointerEvents: "none",
-                        }}
-                    >
-                        <div
-                            style={{
-                                background: "white",
-                                border: "1px solid rgba(0,0,0,0.12)",
-                                borderRadius: 16,
-                                boxShadow: "0 20px 40px rgba(0,0,0,0.18)",
-                                padding: 10,
-                            }}
-                        >
-                            <img
-                                src={getLogoSrc(hover.client.logo)}
-                                alt={hover.client.companyName}
-                                onError={(e) => {
-                                    e.currentTarget.onerror = null;
-                                    e.currentTarget.src = DEFAULT_LOGO;
-                                }}
-                                style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }}
-                            />
-                            <div style={{ marginTop: 8, fontSize: 12, color: "#111827" }}>{hover.client.companyName}</div>
-                            <div style={{ fontSize: 12, color: "#6B7280" }}>{hover.client.country} • {hover.client.city}</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ✅ Client Popup */}
-                {selectedClient && (
+                {/* VIEW MODAL */}
+                {selected && (
                     <div
                         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
                         role="dialog"
                         aria-modal="true"
                         onMouseDown={(e) => {
-                            if (e.target === e.currentTarget) closeClient();
+                            if (e.target === e.currentTarget) closeModal();
                         }}
                     >
                         <div className="absolute inset-0 bg-black/50" />
 
                         <div className="relative w-full sm:max-w-5xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
-                            {/* Top bar */}
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                     <div className="text-lg sm:text-xl truncate">Client Profile</div>
-                                    <div className="text-sm text-gray-600 truncate">
-                                        {selectedClient.companyName} • ID: {selectedClient.id}
+                                    <div className="text-sm text-gray-800 truncate">
+                                        {selected.companyName || "—"}
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-2">
                                     <Link
-                                        href={`/staff/client/${selectedClient.id}/`}
+                                        href={`/staff/client/${selected.documentId}/`}
                                         className="rounded-lg bg-red-700 text-white px-3 py-2 text-sm hover:opacity-90"
-                                        onClick={closeClient}
+                                        onClick={closeModal}
                                     >
                                         Edit Client
                                     </Link>
 
                                     <button
-                                        onClick={closeClient}
+                                        onClick={closeModal}
                                         className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                         type="button"
                                     >
@@ -437,113 +387,124 @@ export default function ClientsPage() {
                                 </div>
                             </div>
 
-                            {/* Client header */}
-                            <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
-                                <div className="flex items-center gap-4">
-                                    <img
-                                        src={getLogoSrc(selectedClient.logo)}
-                                        alt={selectedClient.companyName}
-                                        className="h-24 w-24 rounded-2xl object-cover border border-gray-200 bg-white"
-                                        onError={(e) => {
-                                            e.currentTarget.onerror = null;
-                                            e.currentTarget.src = DEFAULT_LOGO;
-                                        }}
-                                    />
-                                    <div>
-                                        <div className="text-xl text-red-700">{selectedClient.companyName}</div>
-                                        <div className="text-sm text-gray-600">
-                                            Owner: {selectedClient.ownerName} • {selectedClient.country}, {selectedClient.city}
+                            {detailLoading ? (
+                                <div className="mt-4 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">
+                                    Loading details...
+                                </div>
+                            ) : detailError ? (
+                                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                                    {detailError}
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <img
+                                                src={safeImgSrc(detail?.existingMedia?.logo?.url || selected.logoUrl)}
+                                                alt={selected.companyName}
+                                                className="h-24 w-24 rounded-2xl object-cover border border-gray-200 bg-white"
+                                                onError={(e) => {
+                                                    e.currentTarget.onerror = null;
+                                                    e.currentTarget.src = DEFAULT_LOGO;
+                                                }}
+                                            />
+                                            <div>
+                                                <div className="text-xl text-red-700">
+                                                    {detail?.formDefaults?.companyName || selected.companyName}
+                                                </div>
+                                                <div className="text-sm text-gray-800">
+                                                    {detail?.formDefaults?.city || selected.city || "—"} •{" "}
+                                                    <span className="font-medium">
+                                                        {detail?.formDefaults?.statusList || selected.statusList || "—"}
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    <InfoChip label="Country:" value={detail?.formDefaults?.countryList || "—"} />
+                                                    <InfoChip label="Industry:" value={detail?.formDefaults?.industriesList || "—"} />
+                                                    <InfoChip label="Size:" value={detail?.formDefaults?.companySizeList || "—"} />
+                                                </div>
+                                            </div>
                                         </div>
 
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            <InfoChip label="Contacts:" value={selectedClient.contactList?.length || 0} />
-                                            <InfoChip label="Status:" value={selectedClient.status || "—"} />
+                                        <div className="sm:ml-auto">
+                                            <StatusPill status={detail?.formDefaults?.statusList || selected.statusList} />
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="sm:ml-auto">
-                                    <StatusPill status={selectedClient.status} />
-                                </div>
-                            </div>
-
-                            {/* Info */}
-                            <div className="mt-4 rounded-xl border border-gray-200 p-3">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                                    {[
-                                        ["Company", selectedClient.companyName],
-                                        ["Owner", selectedClient.ownerName],
-                                        ["Email", selectedClient.email],
-                                        ["Phone", selectedClient.phone],
-                                        ["Website", selectedClient.website || "—"],
-                                        ["Country", selectedClient.country],
-                                        ["City", selectedClient.city],
-                                        ["Username", selectedClient.username],
-                                    ].map(([k, v]) => (
-                                        <div className="text-xs" key={k}>
-                                            <div className="text-gray-500">{k}</div>
-                                            <div className="text-gray-800 break-words">
-                                                {k === "Website" && v !== "—" ? (
-                                                    <a className="text-blue-600 hover:underline" href={v} target="_blank" rel="noreferrer">
-                                                        {v}
-                                                    </a>
-                                                ) : (
-                                                    v || "—"
-                                                )}
-                                            </div>
+                                    {/* Details grid */}
+                                    <div className="mt-4 rounded-xl border border-gray-300 p-3">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                            {[
+                                                ["Owner", detail?.formDefaults?.ownerName],
+                                                ["Phone", detail?.formDefaults?.phone],
+                                                ["Website", detail?.formDefaults?.website],
+                                                ["City", detail?.formDefaults?.city],
+                                                ["Country", detail?.formDefaults?.countryList],
+                                                ["Industry", detail?.formDefaults?.industriesList],
+                                                ["Company Size", detail?.formDefaults?.companySizeList],
+                                                ["Status", detail?.formDefaults?.statusList],
+                                                ["Username", detail?.formDefaults?.username],
+                                                ["Email", detail?.formDefaults?.email],
+                                            ].map(([k, v]) => (
+                                                <div className="text-sm" key={k}>
+                                                    <div className="text-gray-700">{k}</div>
+                                                    <div className="text-gray-800 break-words">{v || "—"}</div>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
 
-                                <div className="mt-3 text-xs">
-                                    <div className="text-gray-500">Address</div>
-                                    <div className="text-gray-800">{selectedClient.address || "—"}</div>
-                                </div>
-                            </div>
-
-                            {/* Contact List */}
-                            <div className="mt-4 rounded-xl border border-gray-200 p-3">
-                                <div className="text-sm text-gray-800">
-                                    Contact List ({selectedClient.contactList?.length || 0})
-                                </div>
-
-                                <div className="mt-3 space-y-2">
-                                    {(selectedClient.contactList || []).map((d, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm text-gray-800 truncate">{d.name}</div>
-                                                <div className="text-xs text-gray-600">
-                                                    Designation: <span className="text-gray-800">{d.designation || "—"}</span>
-                                                </div>
-                                                <div className="text-xs text-gray-600">
-                                                    Mobile: <span className="text-gray-800">{d.mobile || "—"}</span>
-                                                </div>
-                                                <div className="text-xs text-gray-600">
-                                                    Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
+                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <div className="text-sm">
+                                                <div className="text-gray-700">Short Description</div>
+                                                <div className="text-gray-800">
+                                                    {detail?.formDefaults?.shortDescription || "—"}
                                                 </div>
                                             </div>
-
-                                            <a
-                                                href={d.mobile ? `tel:${String(d.mobile).replace(/\s+/g, "")}` : "#"}
-                                                className="w-full sm:w-auto text-center rounded-lg bg-gray-900 text-white px-3 py-2 text-sm hover:opacity-90"
-                                                onClick={(e) => {
-                                                    if (!d.mobile) e.preventDefault();
-                                                }}
-                                            >
-                                                Call
-                                            </a>
+                                            <div className="text-sm">
+                                                <div className="text-gray-700">Private Note</div>
+                                                <div className="text-gray-800">
+                                                    {detail?.formDefaults?.privateNote || "—"}
+                                                </div>
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
+                                    </div>
+
+                                    {/* Contacts */}
+                                    <div className="mt-4 rounded-xl border border-gray-300 p-3">
+                                        <div className="text-sm text-gray-800">
+                                            Contacts ({detail?.formDefaults?.contactList?.length || 0})
+                                        </div>
+
+                                        <div className="mt-3 space-y-2">
+                                            {(detail?.formDefaults?.contactList || []).map((c, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-sm text-gray-800 truncate">{c.name || "—"}</div>
+                                                        <div className="text-xs text-gray-700">
+                                                            {c.designation || "—"} • {c.mobile || "—"}
+                                                        </div>
+                                                        <div className="text-xs text-gray-600 mt-1">
+                                                            Remarks: {c.remarks || "—"}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {(detail?.formDefaults?.contactList || []).length === 0 ? (
+                                                <div className="text-xs text-gray-500">No contacts</div>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
 
                             <div className="mt-4 flex justify-end">
                                 <button
-                                    onClick={closeClient}
-                                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    onClick={closeModal}
+                                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                     type="button"
                                 >
                                     Close
