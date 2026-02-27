@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import Header from "@/app/components/layouts/staff/Header";
-
 import ENUMS from "../../../../config/enums.json";
 
-// ✅ your existing component
 import DocumentsFieldArray from "@/app/staff/ui/DocumentsFieldArray";
 
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useDropzone } from "react-dropzone";
-import { createCandidate, getAllJobRoles } from "@/app/data/Loader";
-
+import { getAllJobRoles } from "@/app/data/Loader";
 import {
     Field,
     Input,
@@ -32,18 +30,16 @@ import {
 } from "@/app/staff/ui/CandidateFormUI";
 
 
-/* ------------------------------------------------------------------ */
-/* Schema (Strapi fields) */
-/* ------------------------------------------------------------------ */
-const CandidateCreateSchema = z
-    .object({
-        referenceNumber: z.string().optional(), // auto by Strapi
 
-        // ✅ REQUIRED ONLY
+/* ------------------------------------------------------------------ */
+/* Schema (EDIT) */
+/* ------------------------------------------------------------------ */
+const CandidateEditSchema = z
+    .object({
+        referenceNumber: z.string().optional(),
+
         fullName: z.string().min(1, "Full name is required"),
         firstName: z.string().min(2, "First name must be at least 2 characters"),
-
-        // ✅ OPTIONAL
         lastName: z.string().optional(),
 
         genderList: z.string().optional(),
@@ -57,7 +53,7 @@ const CandidateCreateSchema = z
         email: z.string().min(1, "Email is required"),
 
         jobStatus: z.string().optional(),
-        job_roles: z.array(z.number()).optional(),
+        job_roles: z.array(z.coerce.number()).optional(),
 
         isProfileVerifiedList: z.string().optional(),
         currentlyEmployed: z.boolean().optional(),
@@ -72,23 +68,19 @@ const CandidateCreateSchema = z
         currentCompany: z.string().max(120, "Max 120 characters").optional(),
 
         source: z.string().max(120, "Max 120 characters").optional(),
-
         dateScreeningInterview: z.string().optional(),
 
-
-        // account (optional now)
         username: z.string().min(1, "Username is required"),
-        password: z.string().min(3, "Password must be at least 3 characters"),
-        retypePassword: z.string().min(3, "Retype Password must be at least 3 characters"),
+        password: z.string().optional(),
+        retypePassword: z.string().optional(),
 
-        // media (all optional)
         profileImage: z.any().optional(),
         CV: z.any().optional(),
         passport: z.any().optional(),
         passportExpireDate: z.string().optional(),
 
-        workingVideo: z.any().optional(), // single file
-        miScreeningVideo: z.any().optional(), // single file
+        workingVideo: z.any().optional(),
+        miScreeningVideo: z.any().optional(),
 
         documents: z
             .array(
@@ -96,148 +88,92 @@ const CandidateCreateSchema = z
                     name: z.string().optional(),
                     remarks: z.string().max(200, "Max 200 characters").optional(),
                     file: z.any().optional(),
-                    existingUrl: z.string().optional(),
+                    existingUrl: z.string().optional(), // IMPORTANT for edit
+                    existingFileId: z.coerce.number().nullable().optional(), // ✅ keep existing media id
                 })
             )
             .default([]),
     })
     .superRefine((val, ctx) => {
-        // ✅ Profile Image (optional) - image only
-        if (val.profileImage && val.profileImage instanceof File) {
-            if (!fileExtOk(val.profileImage, [".jpg", ".jpeg", ".png", ".webp"])) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["profileImage"],
-                    message: "Profile image must be jpg/png/webp",
-                });
-            }
+        if (val.birthDate && !isValidDateNotFuture(val.birthDate)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Invalid birth date" });
         }
 
-        // ✅ birthDate validate ONLY if user provided it
-        if (val.birthDate) {
-            if (!isValidDateNotFuture(val.birthDate)) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["birthDate"],
-                    message: "Invalid birth date",
-                });
-            }
-        }
-
-        // ✅ Email validate ONLY if user provided it
         if (val.email) {
             const emailOk = z.string().email().safeParse(val.email).success;
             if (!emailOk) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["email"],
-                    message: "Invalid email",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["email"], message: "Invalid email" });
             }
         }
 
-        // ✅ Mobile validate ONLY if user provided it
         if (val.mobile) {
             const m = String(val.mobile).trim();
             if (m.length < 7 || m.length > 20) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["mobile"],
-                    message: "Mobile must be 7–20 characters",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["mobile"], message: "Mobile must be 7–20 characters" });
             }
         }
 
-        // ✅ Password logic (optional)
-        // If user typed any password field -> validate both and match
-        const p = (val.password || "").trim();
-        const rp = (val.retypePassword || "").trim();
+        // password optional
+        const p = String(val.password || "").trim();
+        const rp = String(val.retypePassword || "").trim();
         if (p || rp) {
             if (p.length < 4) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["password"],
-                    message: "Password must be at least 4 characters",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 4 characters" });
             }
             if (!rp) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["retypePassword"],
-                    message: "Retype password is required",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["retypePassword"], message: "Retype password is required" });
             }
             if (p && rp && p !== rp) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["retypePassword"],
-                    message: "Passwords do not match",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["retypePassword"], message: "Passwords do not match" });
             }
         }
 
+        // profileImage ext (if selected)
+        if (val.profileImage && val.profileImage instanceof File) {
+            if (!fileExtOk(val.profileImage, [".jpg", ".jpeg", ".png", ".webp"])) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileImage"], message: "Profile image must be jpg/png/webp" });
+            }
+        }
 
-
-        // ✅ CV validate ONLY if file selected
+        // CV ext (if selected)
         if (val.CV && val.CV instanceof File) {
             if (!fileExtOk(val.CV, [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".doc", ".docx"])) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["CV"],
-                    message: "CV must be pdf/jpg/png/webp/doc/docx",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["CV"], message: "CV must be pdf/jpg/png/webp/doc/docx" });
             }
         }
 
-        // ✅ Passport validate ONLY if file selected
+        // passport ext (if selected)
         if (val.passport && val.passport instanceof File) {
             if (!fileExtOk(val.passport, [".pdf", ".jpg", ".jpeg", ".png", ".webp"])) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["passport"],
-                    message: "Passport must be pdf/jpg/png/webp",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["passport"], message: "Passport must be pdf/jpg/png/webp" });
             }
         }
 
-        // ✅ passportExpireDate validate ONLY if provided
-        // (no validation needed otherwise)
-        // if (val.passportExpireDate) { ... }
-
-        // ✅ workingVideo validate ONLY if selected
+        // videos ext (if selected)
         if (val.workingVideo && val.workingVideo instanceof File) {
             if (!fileExtOk(val.workingVideo, [".mp4", ".mov", ".webm", ".mkv"])) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["workingVideo"],
-                    message: "Video must be mp4/mov/webm/mkv",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["workingVideo"], message: "Video must be mp4/mov/webm/mkv" });
             }
         }
-
-        // ✅ miScreeningVideo validate ONLY if selected
         if (val.miScreeningVideo && val.miScreeningVideo instanceof File) {
             if (!fileExtOk(val.miScreeningVideo, [".mp4", ".mov", ".webm", ".mkv"])) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["miScreeningVideo"],
-                    message: "Video must be mp4/mov/webm/mkv",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["miScreeningVideo"], message: "Video must be mp4/mov/webm/mkv" });
             }
         }
 
-        // ✅ documents validate ONLY if row has something
+        // documents: allow existingUrl OR new File
         (val.documents || []).forEach((d, i) => {
-            const any = (d?.name || "").trim() || (d?.remarks || "").trim() || d?.file;
+            const any =
+                (d?.name || "").trim() ||
+                (d?.remarks || "").trim() ||
+                d?.file ||
+                (d?.existingUrl || "").trim() ||
+                d?.existingFileId;
+
             if (!any) return;
 
-            // If user started a doc row, then enforce proper structure
             if (!String(d?.name || "").trim()) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["documents", i, "name"],
-                    message: "Document name is required",
-                });
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["documents", i, "name"], message: "Document name is required" });
             }
 
             if (d?.file && d.file instanceof File) {
@@ -249,11 +185,13 @@ const CandidateCreateSchema = z
                     });
                 }
             } else {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    path: ["documents", i, "file"],
-                    message: "Document file is required",
-                });
+                if (!String(d?.existingUrl || "").trim() && !d?.existingFileId) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ["documents", i, "file"],
+                        message: "Document file is required",
+                    });
+                }
             }
         });
     });
@@ -261,22 +199,22 @@ const CandidateCreateSchema = z
 /* ------------------------------------------------------------------ */
 /* Page */
 /* ------------------------------------------------------------------ */
-export default function NewCandidatePage() {
-    // ✅ these should come from Strapi enums / API
-    /* const [ENUMS, setENUMS] = useState({
-         genders: ["Male", "Female", "Undisclosed"],
-         nationalities: ["Pakistan", "UAE", "KSA", "India", "Bangladesh", "Philippines", "Egypt", "Other"],
-         maritalStatus: ["Single", "Married", "Divorced", "Widowed"],
-         seasonalStatus: ["Seasonal", "Permanent", "Any"],
-         englishLevel: ["Average", "Basic", "Below Basic", "Excellent"],
-         jobStatus: ["Available", "Working", "On Hold", "Blacklisted"],
-         isProfileVerified: ["Documents Pending", "Verified", "On Hold", "Blacklisted"],
-     }); */
+export default function EditCandidatePage() {
+    const params = useParams();
+    const documentId = params?.documentId;
 
-    // ✅ job roles should be fetched from strapi(too many)
     const [jobRoles, setJobRoles] = useState([]);
+    const [submitMsg, setSubmitMsg] = useState("");
+    const [loading, setLoading] = useState(true);
 
-    // OPTIONAL: fetch real options (recommended)
+    const [existingMedia, setExistingMedia] = useState({
+        profileImage: { url: "", name: "" },
+        CV: { url: "", name: "" },
+        passport: { url: "", name: "" },
+        workingVideo: { url: "", name: "" },
+        miScreeningVideo: { url: "", name: "" },
+    });
+
     useEffect(() => {
         (async () => {
             try {
@@ -288,23 +226,22 @@ export default function NewCandidatePage() {
         })();
     }, []);
 
-    const [submitMsg, setSubmitMsg] = useState("");
-
     const {
         register,
         control,
         watch,
-        setValue,
         handleSubmit,
+        reset,
         formState: { errors, isSubmitting },
     } = useForm({
-        resolver: zodResolver(CandidateCreateSchema),
+        resolver: zodResolver(CandidateEditSchema),
         defaultValues: {
             referenceNumber: "",
 
             firstName: "",
             lastName: "",
             fullName: "",
+
             profileImage: null,
             genderList: "",
             birthDate: "",
@@ -332,9 +269,7 @@ export default function NewCandidatePage() {
             currentCompany: "",
 
             source: "",
-
             dateScreeningInterview: "",
-
 
             username: "",
             password: "",
@@ -351,16 +286,39 @@ export default function NewCandidatePage() {
         },
     });
 
-    const firstName = watch("firstName");
-    const lastName = watch("lastName");
+    // fetch candidate -> reset form
+    useEffect(() => {
+        if (!documentId) return;
+
+        (async () => {
+            setLoading(true);
+            try {
+                const json = await fetchJsonSafe(`/api/candidates/getcandidate/${documentId}`);
+                console.log("Candidate data loaded:", json);
+
+                const jr = normalizeIdArray(json?.formDefaults?.job_roles);
+                reset({ ...json.formDefaults, job_roles: jr });
+                setExistingMedia(json.existingMedia || existingMedia);
+            } catch (e) {
+                console.error(e);
+                setSubmitMsg(`Error: ${e.message || "Failed to load candidate"} ❌`);
+            } finally {
+                setLoading(false);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [documentId, reset]);
 
     const profileImage = watch("profileImage");
+    const CV = watch("CV");
+    const passport = watch("passport");
+    const workingVideo = watch("workingVideo");
+    const miScreeningVideo = watch("miScreeningVideo");
+
     const profilePreview = useMemo(() => {
-        if (profileImage && profileImage instanceof File) {
-            return URL.createObjectURL(profileImage);
-        }
-        return ""; // no existing image in create
-    }, [profileImage]);
+        if (profileImage && profileImage instanceof File) return URL.createObjectURL(profileImage);
+        return existingMedia?.profileImage?.url || "";
+    }, [profileImage, existingMedia]);
 
     useEffect(() => {
         if (!(profileImage instanceof File)) return;
@@ -368,74 +326,42 @@ export default function NewCandidatePage() {
         return () => URL.revokeObjectURL(url);
     }, [profileImage]);
 
-
-    // auto fullName
-    /* useEffect(() => {
-         const fn = `${firstName || ""} ${lastName || ""}`.trim();
-         setValue("fullName", fn, { shouldValidate: true, shouldDirty: true });
-    }, [firstName, lastName, setValue]);
-*/
     const onSubmit = async (formData) => {
         setSubmitMsg("");
-        console.log("Candidate payload:", formData);
-
-        // optional normalize
         if (formData.mobile) formData.mobile = normalizePhone(formData.mobile);
-
         try {
-            // ✅ 1) Build JSON part (NO files inside JSON)
+            // same style as create: JSON without File objects
             const payloadData = {
                 ...formData,
-
-                // IMPORTANT: remove File objects from JSON (server will receive them from fd keys)
                 profileImage: undefined,
                 CV: undefined,
                 passport: undefined,
                 workingVideo: undefined,
                 miScreeningVideo: undefined,
-
-                // documents: remove file objects from JSON but keep name/remarks
                 documents: (formData.documents || []).map((d) => ({
                     name: d?.name || "",
                     remarks: d?.remarks || "",
-                    // file goes separately in FormData
+                    existingUrl: d?.existingUrl || "",
+                    existingFileId: d?.existingFileId ?? null,
                 })),
             };
 
-            // ✅ 2) Build FormData for server route
             const fd = new FormData();
             fd.append("data", JSON.stringify(payloadData));
 
-            // ✅ files must match your Strapi field keys (same as you used before)
-            if (formData.profileImage instanceof File) {
-                fd.append("files.profileImage", formData.profileImage);
-            }
-            if (formData.CV instanceof File) {
-                fd.append("files.CV", formData.CV);
-            }
-            if (formData.passport instanceof File) {
-                fd.append("files.passport", formData.passport);
-            }
+            // only send new files if user selected
+            if (formData.profileImage instanceof File) fd.append("files.profileImage", formData.profileImage);
+            if (formData.CV instanceof File) fd.append("files.CV", formData.CV);
+            if (formData.passport instanceof File) fd.append("files.passport", formData.passport);
+            if (formData.workingVideo instanceof File) fd.append("files.workingVideo", formData.workingVideo);
+            if (formData.miScreeningVideo instanceof File) fd.append("files.miScreeningVideo", formData.miScreeningVideo);
 
-            // single video
-            if (formData.workingVideo instanceof File) {
-                fd.append("files.workingVideo", formData.workingVideo);
-            }
-
-            // single video
-            if (formData.miScreeningVideo instanceof File) {
-                fd.append("files.miScreeningVideo", formData.miScreeningVideo);
-            }
-
-            // documents component files
             (formData.documents || []).forEach((doc, idx) => {
-                if (doc?.file instanceof File) {
-                    fd.append(`files.documents.${idx}.file`, doc.file);
-                }
+                if (doc?.file instanceof File) fd.append(`files.documents.${idx}.file`, doc.file);
             });
 
-            // ✅ 3) Call YOUR server route (token is on server)
-            const res = await fetch("/api/candidates/create", {
+            // ✅ 3) Call  server route (token is on server)
+            const res = await fetch(`/api/candidates/update/${documentId}`, {
                 method: "POST",
                 body: fd,
             });
@@ -446,14 +372,24 @@ export default function NewCandidatePage() {
                 throw new Error(json?.error || "Candidate not saved");
             }
 
-            console.log("Created (server):", json);
-            setSubmitMsg(`Candidate saved ✅ Ref: ${json.referenceNumber || ""}`);
+            console.log("EDIT READY (not saving yet)", { documentId, payloadData });
+            setSubmitMsg("Candidate updated ✅");
         } catch (e) {
             console.error("Add Candidate Error:", e);
             setSubmitMsg(`Error: ${e.message || "Candidate not saved"} ❌`);
         }
     };
-    /******end onSubmit */
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50">
+                <Header />
+                <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-6">Loading candidate...</div>
+                </main>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -464,8 +400,8 @@ export default function NewCandidatePage() {
                     <header className="border-b border-gray-200 bg-white px-4 py-4">
                         <div className="flex items-center justify-between gap-2">
                             <div>
-                                <div className="text-lg text-gray-900">Create Candidate</div>
-                                <div className="text-sm text-gray-600">Create new candidate.</div>
+                                <div className="text-lg text-gray-900">Edit Candidate</div>
+                                <div className="text-sm text-gray-600">Update candidate details.</div>
                             </div>
                             <Link
                                 href="/staff/candidates"
@@ -480,24 +416,16 @@ export default function NewCandidatePage() {
                         {/* ------------------ TOP: Identity + Contact ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Identity & Contact</div>
-                            <div className="text-sm text-gray-800 mt-1">Start with required information for quick processing.</div>
+                            <div className="text-sm text-gray-800 mt-1">Edit basic information.</div>
 
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 ">
-                                {/* ----    <Field
-                                    label="Reference Number"
-                                    hint="Auto-generated by system, unique identifier for the candidate."
-                                    info="This is generated after saving the candidate."
-                                >
-                                    <Input {...register("referenceNumber")} disabled placeholder="Auto-generated" />
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Field label="Reference Number" info="Auto-generated by system.">
+                                    <Input {...register("referenceNumber")} disabled placeholder="Auto-generated cursor-text" />
                                 </Field>
 
-                                 ---- */}
-                                <Field label="Full Name" hint="" info="Full name of candidate" error={errors.fullName?.message}>
+                                <Field label="Full Name" info="Full name of candidate" error={errors.fullName?.message}>
                                     <Input {...register("fullName")} placeholder="First + Middle + Last" />
                                 </Field>
-
-
-
                             </div>
 
                             {/* Profile Image */}
@@ -520,11 +448,19 @@ export default function NewCandidatePage() {
                                 {profilePreview ? (
                                     <div className="rounded-2xl border border-gray-200 p-3 bg-gray-50">
                                         <div className="text-sm text-gray-800 mb-2">Preview</div>
-                                        <img src={profilePreview} className="h-40 w-40 rounded-2xl object-cover border border-gray-200 bg-white" />
+                                        <img
+                                            src={profilePreview}
+                                            className="h-40 w-40 rounded-2xl object-cover border border-gray-200 bg-white"
+                                            alt=""
+                                        />
+                                        {existingMedia?.profileImage?.url && !(profileImage instanceof File) ? (
+                                            <div className="mt-2 text-xs text-gray-600">
+                                                Current: {existingMedia.profileImage.name || "profileImage"}
+                                            </div>
+                                        ) : null}
                                     </div>
-                                ) : null}  </div>
-
-
+                                ) : null}
+                            </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field label="First Name" info="Candidate first name as per passport." error={errors.firstName?.message}>
@@ -536,7 +472,7 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <Field label="Gender" info="Enumeration from Strapi (Male/Female/Undisclosed)." error={errors.genderList?.message}>
+                                <Field label="Gender" info="Enumeration from Strapi." error={errors.genderList?.message}>
                                     <Select {...register("genderList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.genders.map((g) => (
@@ -567,12 +503,10 @@ export default function NewCandidatePage() {
                                 <Field label="Mobile" info="Phone number 7–20 chars." error={errors.mobile?.message}>
                                     <Input {...register("mobile")} placeholder="+92 3xx xxxxxxx" />
                                 </Field>
-
-
                             </div>
                         </div>
 
-                        {/* ------------------ JOB / STATUS (important) ------------------ */}
+                        {/* ------------------ JOB / STATUS ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Job & Status</div>
                             <div className="text-sm text-gray-800 mt-1">Most-used screening fields for shortlisting.</div>
@@ -581,19 +515,27 @@ export default function NewCandidatePage() {
                                 <Controller
                                     control={control}
                                     name="job_roles"
-                                    render={({ field }) => (
-                                        <MultiSelectSearchIds
-                                            label="Job Roles"
-                                            info="Search and select multiple roles (Strapi relation)."
-                                            hint="Type to search roles. Select multiple."
-                                            options={jobRoles}          // ✅ [{id,title,...}]
-                                            value={field.value || []}   // ✅ [2,6,11]
-                                            onChange={field.onChange}   // ✅ sets IDs
-                                            error={errors.job_roles?.message}
-                                            getLabel={(o) => o.title}   // ✅ show title
-                                            getValue={(o) => o.id}      // ✅ store id
-                                        />
-                                    )}
+                                    render={({ field }) => {
+                                        const safeValue = (Array.isArray(field.value) ? field.value : [])
+                                            .map((x) => Number((x && typeof x === "object") ? (x.id ?? x.value ?? x) : x))
+                                            .filter((n) => Number.isFinite(n));
+
+                                        return (
+                                            <MultiSelectSearchIds
+                                                label="Job Roles"
+                                                info="Search and select multiple roles (Strapi relation)."
+                                                hint="Type to search roles. Select multiple."
+                                                options={jobRoles}
+                                                value={safeValue}
+                                                onChange={(ids) =>
+                                                    field.onChange((ids || []).map(Number).filter(Number.isFinite))
+                                                }
+                                                error={errors.job_roles?.message}
+                                                getLabel={(o) => o.title || o.attributes?.title || o.name || ""}
+                                                getValue={(o) => Number(o.id)}
+                                            />
+                                        );
+                                    }}
                                 />
 
                                 <Field label="Job Status" info="Current candidate availability status." error={errors.jobStatus?.message}>
@@ -642,7 +584,7 @@ export default function NewCandidatePage() {
                                     </Select>
                                 </Field>
 
-                                <Field label="Profile Verified" info="Set Yes only after document checks.">
+                                <Field label="Profile Verified" info="Set after document checks.">
                                     <Controller
                                         control={control}
                                         name="isProfileVerifiedList"
@@ -661,7 +603,7 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <Field label="Number of Experience (Years)" info="Total experience in years. (number field)" error={errors.numberOfExperience?.message}>
+                                <Field label="Number of Experience (Years)" info="Total experience in years." error={errors.numberOfExperience?.message}>
                                     <Input {...register("numberOfExperience")} type="number" min={0} step={1} />
                                 </Field>
 
@@ -682,7 +624,7 @@ export default function NewCandidatePage() {
                                     />
                                 </Field>
 
-                                <Field label="Source" info="Where did this candidate come from? (e.g. Facebook, Referral, Agency)" error={errors.source?.message}>
+                                <Field label="Source" info='Schema uses "Source" but form uses "source".' error={errors.source?.message}>
                                     <Input {...register("source")} placeholder="e.g. Facebook / Referral / Agency" />
                                 </Field>
                             </div>
@@ -698,50 +640,28 @@ export default function NewCandidatePage() {
                                     <Input {...register("previousCompany")} placeholder="Company name" />
                                 </Field>
 
-                                <Field label="Previous Job Experience" info="Short details about previous jobs." error={errors.previousJobExperiece?.message}>
+                                <Field label="Previous Job Experience" info="Years." error={errors.previousJobExperiece?.message}>
                                     <Input {...register("previousJobExperiece")} type="number" min={0} step={1} />
                                 </Field>
-
-
-
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <Field label="Current Company" info="Last company name (if any)." error={errors.currentCompany?.message}>
+                                <Field label="Current Company" info="Current company name (if any)." error={errors.currentCompany?.message}>
                                     <Input {...register("currentCompany")} placeholder="Company name" />
                                 </Field>
 
-                                <Field label="Current Job Experience" info="Short details about current job." error={errors.currentJobExperiece?.message}>
+                                <Field label="Current Job Experience" info="Years." error={errors.currentJobExperiece?.message}>
                                     <Input {...register("currentJobExperiece")} type="number" min={0} step={1} />
                                 </Field>
-
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field
-                                    label="Short Summary"
-                                    info="Max 250 chars. Good for quick review."
-                                    error={errors.shortSummary?.message}
-                                >
-                                    <Textarea
-                                        {...register("shortSummary")}
-                                        placeholder="e.g. Ready to join, strong skills in..."
-                                        rows={4}
-                                        maxLength={250}
-                                    />
+                                <Field label="Short Summary" info="Max 250 chars." error={errors.shortSummary?.message}>
+                                    <Textarea {...register("shortSummary")} placeholder="e.g. Ready to join..." rows={4} maxLength={250} />
                                 </Field>
 
-                                <Field
-                                    label="Private Notes"
-                                    info="Internal only (not for clients)."
-                                    error={errors.privateNotes?.message}
-                                >
-                                    <Textarea
-                                        {...register("privateNotes")}
-                                        placeholder="Recruiter notes..."
-                                        rows={4}
-                                        maxLength={2000}
-                                    />
+                                <Field label="Private Notes" info="Internal only." error={errors.privateNotes?.message}>
+                                    <Textarea {...register("privateNotes")} placeholder="Recruiter notes..." rows={4} maxLength={2000} />
                                 </Field>
                             </div>
                         </div>
@@ -749,23 +669,34 @@ export default function NewCandidatePage() {
                         {/* ------------------ DOCUMENTS & MEDIA ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Documents & Media</div>
-                            <div className="text-sm text-gray-800 mt-1">Upload required media. CV supports PDF/images.</div>
+                            <div className="text-sm text-gray-800 mt-1">Upload/replace media files.</div>
 
                             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
                                     name="CV"
                                     render={({ field }) => (
-                                        <DropzoneBox
-                                            label="CV (Required)"
-                                            info="Strapi media: PDF or image."
-                                            hint="Accepted: .pdf, .jpg, .png, .webp"
-                                            acceptText="Accepted: .pdf, .jpg, .png, .webp"
-                                            multiple={false}
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                            error={errors.CV?.message}
-                                        />
+                                        <div>
+                                            <DropzoneBox
+                                                label="CV"
+                                                info="Strapi media: PDF or image."
+                                                hint="Accepted: .pdf, .jpg, .png, .webp, .doc, .docx"
+                                                acceptText="Accepted: .pdf, .jpg, .png, .webp, .doc, .docx"
+                                                multiple={false}
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                error={errors.CV?.message}
+                                            />
+                                            {existingMedia?.CV?.url && !(CV instanceof File) ? (
+                                                <a
+                                                    href={existingMedia.CV.url}
+                                                    target="_blank"
+                                                    className="mt-2 inline-block text-xs text-red-700 hover:underline"
+                                                >
+                                                    View current CV ({existingMedia.CV.name || "file"})
+                                                </a>
+                                            ) : null}
+                                        </div>
                                     )}
                                 />
 
@@ -773,22 +704,33 @@ export default function NewCandidatePage() {
                                     control={control}
                                     name="passport"
                                     render={({ field }) => (
-                                        <DropzoneBox
-                                            label="Passport (Required)"
-                                            info="Passport scan image or PDF."
-                                            hint="Accepted: .pdf, .jpg, .png, .webp"
-                                            acceptText="Accepted: .pdf, .jpg, .png, .webp"
-                                            multiple={false}
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                            error={errors.passport?.message}
-                                        />
+                                        <div>
+                                            <DropzoneBox
+                                                label="Passport"
+                                                info="Passport scan image or PDF."
+                                                hint="Accepted: .pdf, .jpg, .png, .webp"
+                                                acceptText="Accepted: .pdf, .jpg, .png, .webp"
+                                                multiple={false}
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                error={errors.passport?.message}
+                                            />
+                                            {existingMedia?.passport?.url && !(passport instanceof File) ? (
+                                                <a
+                                                    href={existingMedia.passport.url}
+                                                    target="_blank"
+                                                    className="mt-2 inline-block text-xs text-red-700 hover:underline"
+                                                >
+                                                    View current Passport ({existingMedia.passport.name || "file"})
+                                                </a>
+                                            ) : null}
+                                        </div>
                                     )}
                                 />
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Passport Expiry Date" info="Required. Used for visa processing." error={errors.passportExpireDate?.message}>
+                                <Field label="Passport Expiry Date" info="Used for visa processing." error={errors.passportExpireDate?.message}>
                                     <Input {...register("passportExpireDate")} type="date" />
                                 </Field>
                             </div>
@@ -798,23 +740,32 @@ export default function NewCandidatePage() {
                                     control={control}
                                     name="workingVideo"
                                     render={({ field }) => (
-                                        <DropzoneBox
-                                            label="Working Video"
-                                            info="Upload single  working video (mp4/mov/webm/mkv)."
-                                            hint="upload single working video."
-                                            acceptText="Accepted: .mp4, .mov, .webm, .mkv"
-                                            multiple={false}
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                            error={errors.workingVideo?.message}
-                                        />
+                                        <div>
+                                            <DropzoneBox
+                                                label="Working Video"
+                                                info="Upload single working video (mp4/mov/webm/mkv)."
+                                                hint="Optional"
+                                                acceptText="Accepted: .mp4, .mov, .webm, .mkv"
+                                                multiple={false}
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                error={errors.workingVideo?.message}
+                                            />
+                                            {existingMedia?.workingVideo?.url && !(workingVideo instanceof File) ? (
+                                                <a
+                                                    href={existingMedia.workingVideo.url}
+                                                    target="_blank"
+                                                    className="mt-2 inline-block text-xs text-red-700 hover:underline"
+                                                >
+                                                    View current Working Video ({existingMedia.workingVideo.name || "file"})
+                                                </a>
+                                            ) : null}
+                                        </div>
                                     )}
                                 />
-
-
                             </div>
 
-                            {/* ✅ Repeatable component documents */}
+                            {/* Repeatable documents component */}
                             <div className="mt-4">
                                 <DocumentsFieldArray control={control} register={register} errors={errors} name="documents" />
                             </div>
@@ -823,10 +774,10 @@ export default function NewCandidatePage() {
                         {/* ------------------ SCREENING ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Screening</div>
-                            <div className="text-sm text-gray-800 mt-1">Store interview date and video</div>
+                            <div className="text-sm text-gray-800 mt-1">Interview date and video</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Screening Interview Date" info="Date of screening interview (optional)." error={errors.dateScreeningInterview?.message}>
+                                <Field label="Screening Interview Date" info="Optional." error={errors.dateScreeningInterview?.message}>
                                     <Input {...register("dateScreeningInterview")} type="date" />
                                 </Field>
 
@@ -834,27 +785,38 @@ export default function NewCandidatePage() {
                                     control={control}
                                     name="miScreeningVideo"
                                     render={({ field }) => (
-                                        <DropzoneBox
-                                            label="MI Screening Video (Optional)"
-                                            info="Screening interview recording."
-                                            acceptText="Accepted: .mp4, .mov, .webm, .mkv"
-                                            multiple={false}
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                            error={errors.miScreeningVideo?.message}
-                                        />
+                                        <div>
+                                            <DropzoneBox
+                                                label="MI Screening Video"
+                                                info="Screening interview recording."
+                                                acceptText="Accepted: .mp4, .mov, .webm, .mkv"
+                                                multiple={false}
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                error={errors.miScreeningVideo?.message}
+                                            />
+                                            {existingMedia?.miScreeningVideo?.url && !(miScreeningVideo instanceof File) ? (
+                                                <a
+                                                    href={existingMedia.miScreeningVideo.url}
+                                                    target="_blank"
+                                                    className="mt-2 inline-block text-xs text-red-700 hover:underline"
+                                                >
+                                                    View current Screening Video ({existingMedia.miScreeningVideo.name || "file"})
+                                                </a>
+                                            ) : null}
+                                        </div>
                                     )}
                                 />
                             </div>
                         </div>
 
-                        {/* ------------------ ACCOUNT (LOGIN) ------------------ */}
+                        {/* ------------------ ACCOUNT ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Account</div>
                             <div className="text-sm text-gray-800 mt-1">Candidate login credentials.</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Username" info="Login username (min 3 chars)." error={errors.username?.message}>
+                                <Field label="Username" info="Login username." error={errors.username?.message}>
                                     <Input {...register("username")} />
                                 </Field>
 
@@ -864,17 +826,12 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Password" info="Min 8 characters." error={errors.password?.message}>
+                                <Field label="Password" info="Leave empty if you don't want to change." error={errors.password?.message}>
                                     <Controller
                                         control={control}
                                         name="password"
                                         render={({ field }) => (
-                                            <PasswordInput
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                                placeholder="Min 8 characters"
-                                                error={errors.password?.message}
-                                            />
+                                            <PasswordInput value={field.value} onChange={field.onChange} autoComplete="new-password" placeholder="If password change required" error={errors.password?.message} />
                                         )}
                                     />
                                 </Field>
@@ -884,12 +841,7 @@ export default function NewCandidatePage() {
                                         control={control}
                                         name="retypePassword"
                                         render={({ field }) => (
-                                            <PasswordInput
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                                placeholder="Retype password"
-                                                error={errors.retypePassword?.message}
-                                            />
+                                            <PasswordInput value={field.value} onChange={field.onChange} placeholder="Retype second time" error={errors.retypePassword?.message} />
                                         )}
                                     />
                                 </Field>

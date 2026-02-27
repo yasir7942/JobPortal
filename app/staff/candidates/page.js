@@ -18,126 +18,28 @@ const DEFAULT_AVATAR =
   </svg>
 `);
 
-function isPdfUrl(url) {
-    if (!url) return false;
-    const u = String(url).toLowerCase();
-    return u.includes(".pdf");
-}
-
 function safeImgSrc(src) {
     const s = (src || "").trim();
     return s ? s : DEFAULT_AVATAR;
 }
 
-/** ✅ Dummy candidates (UPDATED to match your Strapi fields) */
-const DUMMY_CANDIDATES = Array.from({ length: 35 }).map((_, i) => {
-    const id = 1001 + i;
+function isPdfUrl(url) {
+    if (!url) return false;
+    return String(url).toLowerCase().includes(".pdf");
+}
 
-    const imgs = [12, 22, 31, 45, 52, 61, 68, 71];
-    const img = imgs[i % imgs.length];
-
-    const firstNames = ["Ali", "Ahmed", "Fatima", "Omar", "Usman", "Hina", "Bilal", "Ayesha"];
-    const lastNames = ["Khan", "Raza", "Noor", "Hassan", "Aslam", "Sheikh", "Iqbal", "Malik"];
-
-    const nationalities = ["Pakistan", "India", "Bangladesh", "Egypt", "Nepal", "Philippines", "Sri Lanka", "UAE"];
-    const genders = ["Male", "Female", "Undisclosed"];
-    const marital = ["Single", "Married", "Divorced", "Widowed"];
-    const seasonal = ["Seasonal", "Permanent", "Any"];
-    const english = ["Average", "Basic", "Below Basic", "Excellent"];
-    const jobStatus = ["Available", "Working", "On Hold", "Blacklisted"];
-
-    const allRoles = [
-        "CNC Machine Operator",
-        "Electrician",
-        "Fabricator",
-        "General Worker",
-        "Car Mechanic",
-        "Forklift Operator",
-        "Welder",
-    ];
-
-    const firstName = firstNames[i % firstNames.length];
-    const lastName = lastNames[i % lastNames.length];
-
-    const nationality = nationalities[i % nationalities.length];
-    const gender = genders[i % genders.length];
-
-    // pick 1-3 roles
-    const rolesCount = (i % 3) + 1;
-    const job_roles = Array.from({ length: rolesCount }).map((__, r) => allRoles[(i + r) % allRoles.length]);
-
-    const cvUrl =
-        i % 4 === 0
-            ? "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
-            : `https://picsum.photos/seed/cv-${id}/900/1200`; // simulate image CV sometimes
-
-    return {
-        id,
-        profileImageUrl: i % 7 === 0 ? "" : `https://i.pravatar.cc/300?img=${img}`,
-        referenceNumber: `CND-${String(id).slice(-4)}`,
-
-        firstName,
-        lastName,
-        fullName: `${firstName} ${lastName}`,
-
-        gender,
-        birthDate: "1997-06-10",
-
-        nationality,
-        maritalStatus: marital[i % marital.length],
-        seasonalStatus: seasonal[i % seasonal.length],
-        englishLevel: english[i % english.length],
-
-        isProfileVerified: i % 3 !== 0,
-
-        mobile: `+92 3${(i % 10) + 1}0 ${1000000 + i}`,
-        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`,
-        username: `${firstName.toLowerCase()}.${lastName.toLowerCase()}`,
-
-        job_roles,
-        jobStatus: jobStatus[i % jobStatus.length],
-
-        numberOfExperience: (i % 12) + 1,
-        currentlyEmployed: i % 2 === 0,
-        source: ["Facebook", "Referral", "Agency", "Walk-in"][i % 4],
-
-        shortSummary: "Ready to join",
-        privateNotes: "Internal notes example",
-
-        passportExpireDate: "2028-06-30",
-
-        passportUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-        cvUrl,
-
-        workingVideoUrls:
-            i % 5 === 0
-                ? [
-                    "https://file-examples.com/storage/fe9c09db77c5d52f2b0d51a/2017/04/file_example_MP4_480_1_5MG.mp4",
-                ]
-                : [],
-
-        miScreeningVideoUrl:
-            i % 6 === 0
-                ? "https://file-examples.com/storage/fe9c09db77c5d52f2b0d51a/2017/04/file_example_MP4_480_1_5MG.mp4"
-                : "",
-
-        documents: [
-            {
-                name: "Experience Letter",
-                remarks: "Verified",
-                url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-            },
-            {
-                name: "Education Certificate",
-                remarks: "Pending",
-                url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-            },
-        ],
-
-        suggestedToClientsCount: (i * 3) % 21,
-        shortlistedByClientsCount: (i * 2) % 11,
-    };
-});
+async function fetchJsonSafe(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    const text = await res.text();
+    let json;
+    try {
+        json = text ? JSON.parse(text) : null;
+    } catch {
+        throw new Error(`API returned non-JSON (status ${res.status}). First bytes: ${text.slice(0, 80)}`);
+    }
+    if (!res.ok || json?.ok === false) throw new Error(json?.error || `Request failed (${res.status})`);
+    return json;
+}
 
 function VerifiedIcon({ ok }) {
     return (
@@ -189,14 +91,33 @@ function rolesLabel(roles = []) {
     return `${roles[0]} +${roles.length - 1}`;
 }
 
+function isVerifiedValue(v) {
+    const s = String(v || "").toLowerCase();
+    return s === "verified" || s === "yes" || s === "true";
+}
+
 export default function CandidatesPage() {
-    const [allCandidates] = useState(DUMMY_CANDIDATES);
+    const pageSize = 15;
 
     const [search, setSearch] = useState("");
-    const [page, setPage] = useState(1);
-    const pageSize = 12;
+    const [debouncedQ, setDebouncedQ] = useState("");
 
+    const [page, setPage] = useState(1);
+
+    const [rows, setRows] = useState([]);
+    const [pageCount, setPageCount] = useState(1);
+    const [total, setTotal] = useState(0);
+
+    const [loadingTable, setLoadingTable] = useState(true);
+    const [tableError, setTableError] = useState("");
+
+    // Popup candidate (list row)
     const [selectedCandidate, setSelectedCandidate] = useState(null);
+
+    // Full details from getcandidate API
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState("");
+    const [detail, setDetail] = useState(null);
 
     // CV loading (pdf iframe)
     const [cvLoading, setCvLoading] = useState(false);
@@ -204,69 +125,46 @@ export default function CandidatesPage() {
     const cvLoadedRef = useRef(false);
     const cvTimeoutRef = useRef(null);
 
-    // Hover preview
-    const [hover, setHover] = useState({ show: false, x: 0, y: 0, candidate: null });
-
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return allCandidates;
-
-        return allCandidates.filter((c) => {
-            const hay = [
-                c.referenceNumber,
-                c.fullName,
-                c.nationality,
-                c.jobStatus,
-                ...(c.job_roles || []),
-                c.mobile,
-                c.email,
-                c.username,
-                c.source,
-            ]
-                .filter(Boolean)
-                .join(" ")
-                .toLowerCase();
-
-            return hay.includes(q);
-        });
-    }, [search, allCandidates]);
-
-    const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-    const rows = useMemo(() => {
-        const start = (page - 1) * pageSize;
-        return filtered.slice(start, start + pageSize);
-    }, [filtered, page, pageSize]);
-
+    // Debounce search
     useEffect(() => {
-        if (page > pageCount) setPage(1);
-    }, [page, pageCount]);
+        const t = setTimeout(() => setDebouncedQ(search.trim()), 350);
+        return () => clearTimeout(t);
+    }, [search]);
 
-    function openCandidate(c) {
-        setSelectedCandidate(c);
-
-        // CV loader only for PDF iframe preview
-        if (isPdfUrl(c.cvUrl)) {
-            setCvLoading(true);
-            setCvFailed(false);
-            cvLoadedRef.current = false;
-
-            if (cvTimeoutRef.current) clearTimeout(cvTimeoutRef.current);
-            cvTimeoutRef.current = setTimeout(() => {
-                if (!cvLoadedRef.current) {
-                    setCvFailed(true);
-                    setCvLoading(false);
-                }
-            }, 6000);
-        } else {
-            setCvLoading(false);
-            setCvFailed(false);
+    async function loadCandidates(nextPage = page, q = debouncedQ) {
+        setLoadingTable(true);
+        setTableError("");
+        try {
+            const url = `/api/candidates/list?page=${nextPage}&pageSize=${pageSize}&q=${encodeURIComponent(q || "")}`;
+            const json = await fetchJsonSafe(url);
+            setRows(Array.isArray(json.items) ? json.items : []);
+            setPageCount(Number(json.pageCount || 1));
+            setTotal(Number(json.total || 0));
+        } catch (e) {
+            setTableError(e?.message || "Failed to load candidates");
+            setRows([]);
+            setPageCount(1);
+            setTotal(0);
+        } finally {
+            setLoadingTable(false);
         }
     }
 
+    // Load table data (server-side pagination)
+    useEffect(() => {
+        loadCandidates(page, debouncedQ);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page, debouncedQ]);
+
     function closeCandidate() {
         setSelectedCandidate(null);
+        setDetail(null);
+        setDetailError("");
+        setDetailLoading(false);
+
         setCvLoading(false);
         setCvFailed(false);
+
         if (cvTimeoutRef.current) {
             clearTimeout(cvTimeoutRef.current);
             cvTimeoutRef.current = null;
@@ -289,23 +187,52 @@ export default function CandidatesPage() {
         return () => (document.body.style.overflow = prev);
     }, [selectedCandidate]);
 
-    // Hover helpers
-    function onAvatarEnter(e, c) {
-        setHover({ show: true, x: e.clientX, y: e.clientY, candidate: c });
+    async function openCandidate(c) {
+        setSelectedCandidate(c);
+        setDetail(null);
+        setDetailError("");
+        setDetailLoading(true);
+
+        try {
+            const json = await fetchJsonSafe(`/api/candidates/getcandidate/${c.documentId}`);
+            setDetail(json);
+
+            // CV loader only for PDF iframe preview
+            const cvUrl = json?.existingMedia?.CV?.url || "";
+            if (isPdfUrl(cvUrl)) {
+                setCvLoading(true);
+                setCvFailed(false);
+                cvLoadedRef.current = false;
+
+                if (cvTimeoutRef.current) clearTimeout(cvTimeoutRef.current);
+                cvTimeoutRef.current = setTimeout(() => {
+                    if (!cvLoadedRef.current) {
+                        setCvFailed(true);
+                        setCvLoading(false);
+                    }
+                }, 6000);
+            } else {
+                setCvLoading(false);
+                setCvFailed(false);
+            }
+        } catch (e) {
+            setDetailError(e?.message || "Failed to load candidate details");
+        } finally {
+            setDetailLoading(false);
+        }
     }
-    function onAvatarMove(e) {
-        if (!hover.show) return;
-        setHover((prev) => ({ ...prev, x: e.clientX, y: e.clientY }));
-    }
-    function onAvatarLeave() {
-        setHover({ show: false, x: 0, y: 0, candidate: null });
-    }
+
+    const headerText = useMemo(() => {
+        const q = (debouncedQ || "").trim();
+        if (!q) return `(${total} candidates)`;
+        return `(${total} results for "${q}")`;
+    }, [debouncedQ, total]);
 
     return (
         <div className="min-h-screen bg-gray-50">
             <Header />
 
-            <div className="mt-10 p-6 font-bold text-3xl sm:text-5xl text-red-700 border-b border-gray-300">
+            <div className="mt-2 p-6 font-bold text-2xl sm:text-3xl text-red-700 border-b border-gray-300">
                 Candidates
             </div>
 
@@ -315,18 +242,10 @@ export default function CandidatesPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <div className="text-lg text-gray-900">Candidates</div>
-                                <div className="text-sm text-gray-600">Dummy data for now. Later connect Strapi.</div>
+                                <div className="text-sm text-gray-600">Connected to Strapi • {headerText}</div>
                             </div>
 
                             <div className="flex w-full sm:w-auto items-center gap-2 sm:justify-end">
-                                <Link
-                                    href="/staff/search-candidates"
-                                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
-                                    title="Open advanced search page"
-                                >
-                                    Advanced Search
-                                </Link>
-
                                 <div className="relative w-full sm:w-72">
                                     <input
                                         value={search}
@@ -334,11 +253,20 @@ export default function CandidatesPage() {
                                             setSearch(e.target.value);
                                             setPage(1);
                                         }}
-                                        placeholder="Search in table..."
+                                        placeholder="Search (name/ref/phone/email/role)..."
                                         className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-amber-200"
                                     />
                                     <span className="pointer-events-none absolute right-3 top-2.5 text-gray-400">⌕</span>
                                 </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => loadCandidates(page, debouncedQ)}
+                                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                                    title="Reload from DB"
+                                >
+                                    Refresh
+                                </button>
 
                                 <Link
                                     href="/staff/candidates/new"
@@ -350,11 +278,12 @@ export default function CandidatesPage() {
                         </div>
                     </header>
 
-                    {/* ✅ TABLE (added Phone column) */}
+                    {/* ✅ TABLE */}
                     <div className="w-full overflow-x-auto">
-                        <table className="min-w-[1450px] w-full text-left">
+                        <table className="w-full text-left">
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr className="text-xs uppercase text-gray-600">
+                                    <th className="px-3 py-2">Id</th>
                                     <th className="px-3 py-2">Profile</th>
                                     <th className="px-3 py-2">Ref</th>
                                     <th className="px-3 py-2">Name</th>
@@ -362,23 +291,34 @@ export default function CandidatesPage() {
                                     <th className="px-3 py-2">Nationality</th>
                                     <th className="px-3 py-2">Roles</th>
                                     <th className="px-3 py-2">Job Status</th>
-                                    <th className="px-3 py-2">Suggested</th>
-                                    <th className="px-3 py-2">Shortlisted</th>
                                     <th className="px-3 py-2">Verified</th>
                                     <th className="px-3 py-2">Actions</th>
                                 </tr>
                             </thead>
 
                             <tbody>
-                                {rows.length === 0 ? (
+                                {loadingTable ? (
                                     <tr>
-                                        <td colSpan={11} className="px-3 py-6 text-sm text-gray-600">
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-600">
+                                            Loading candidates...
+                                        </td>
+                                    </tr>
+                                ) : tableError ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-red-700">
+                                            {tableError}
+                                        </td>
+                                    </tr>
+                                ) : rows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-600">
                                             No candidates found.
                                         </td>
                                     </tr>
                                 ) : (
                                     rows.map((c) => (
-                                        <tr key={c.id} className="border-b border-gray-200 hover:bg-gray-50">
+                                        <tr key={c.documentId || c.id} className="border-b border-gray-200 hover:bg-gray-50">
+                                            <td className="px-3 py-2">{c.id}</td>
                                             <td className="px-3 py-2">
                                                 <img
                                                     src={safeImgSrc(c.profileImageUrl)}
@@ -388,35 +328,26 @@ export default function CandidatesPage() {
                                                         e.currentTarget.onerror = null;
                                                         e.currentTarget.src = DEFAULT_AVATAR;
                                                     }}
-                                                    onMouseEnter={(e) => onAvatarEnter(e, c)}
-                                                    onMouseMove={onAvatarMove}
-                                                    onMouseLeave={onAvatarLeave}
                                                 />
                                             </td>
 
-                                            <td className="px-3 py-2 text-sm text-gray-900">{c.referenceNumber}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-900">{c.referenceNumber || "—"}</td>
 
                                             <td className="px-3 py-2 text-sm text-gray-900">
-                                                {c.fullName}
-                                                <div className="text-xs text-gray-500">{c.email}</div>
+                                                {c.fullName || "—"}
+                                                <div className="text-xs text-gray-500">{c.email || "—"}</div>
                                             </td>
 
                                             <td className="px-3 py-2 text-sm text-gray-800">{c.mobile || "—"}</td>
-
-                                            <td className="px-3 py-2 text-sm text-gray-800">{c.nationality}</td>
-
-                                            <td className="px-3 py-2 text-sm text-gray-800">{rolesLabel(c.job_roles)}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-800">{c.nationalityList || "—"}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-800">{rolesLabel(c.job_roles || [])}</td>
 
                                             <td className="px-3 py-2">
                                                 <StatusPill status={c.jobStatus} />
                                             </td>
 
-                                            <td className="px-3 py-2 text-sm text-gray-900">{c.suggestedToClientsCount ?? 0}</td>
-
-                                            <td className="px-3 py-2 text-sm text-gray-900">{c.shortlistedByClientsCount ?? 0}</td>
-
                                             <td className="px-3 py-2">
-                                                <VerifiedIcon ok={!!c.isProfileVerified} />
+                                                <VerifiedIcon ok={isVerifiedValue(c.isProfileVerifiedList)} />
                                             </td>
 
                                             <td className="px-3 py-2">
@@ -429,9 +360,8 @@ export default function CandidatesPage() {
                                                         View
                                                     </button>
 
-                                                    {/* ✅ fixed edit route */}
                                                     <Link
-                                                        href={`/staff/candidates/${c.id}/edit`}
+                                                        href={`/staff/candidates/${c.documentId}/`}
                                                         className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
                                                     >
                                                         Edit
@@ -445,18 +375,18 @@ export default function CandidatesPage() {
                         </table>
                     </div>
 
-                    {/* pagination */}
+                    {/* pagination (server-side) */}
                     <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-white px-4 py-3">
                         <div className="text-sm text-gray-600">
                             Page {page} of {pageCount}
-                            <span className="ml-2 text-xs text-gray-500">({filtered.length} candidates)</span>
+                            <span className="ml-2 text-xs text-gray-500">({total} candidates)</span>
                         </div>
 
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
                                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                disabled={page <= 1}
+                                disabled={page <= 1 || loadingTable}
                                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                             >
                                 Prev
@@ -464,7 +394,7 @@ export default function CandidatesPage() {
                             <button
                                 type="button"
                                 onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                                disabled={page >= pageCount}
+                                disabled={page >= pageCount || loadingTable}
                                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                             >
                                 Next
@@ -473,43 +403,7 @@ export default function CandidatesPage() {
                     </div>
                 </div>
 
-                {/* Hover Preview */}
-                {hover.show && hover.candidate && (
-                    <div
-                        style={{
-                            position: "fixed",
-                            left: Math.min(hover.x + 18, window.innerWidth - 260),
-                            top: Math.min(hover.y - 80, window.innerHeight - 260),
-                            zIndex: 9999,
-                            width: 240,
-                            pointerEvents: "none",
-                        }}
-                    >
-                        <div
-                            style={{
-                                background: "white",
-                                border: "1px solid rgba(0,0,0,0.12)",
-                                borderRadius: 16,
-                                boxShadow: "0 20px 40px rgba(0,0,0,0.18)",
-                                padding: 10,
-                            }}
-                        >
-                            <img
-                                src={safeImgSrc(hover.candidate.profileImageUrl)}
-                                alt={hover.candidate.fullName}
-                                onError={(e) => {
-                                    e.currentTarget.onerror = null;
-                                    e.currentTarget.src = DEFAULT_AVATAR;
-                                }}
-                                style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 14 }}
-                            />
-                            <div style={{ marginTop: 8, fontSize: 12, color: "#111827" }}>{hover.candidate.fullName}</div>
-                            <div style={{ fontSize: 12, color: "#6B7280" }}>{hover.candidate.referenceNumber}</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ✅ Candidate Popup (UPDATED view data) */}
+                {/* ✅ Candidate Popup (shows ALL fields from getcandidate) */}
                 {selectedCandidate && (
                     <div
                         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -522,7 +416,6 @@ export default function CandidatesPage() {
                         <div className="absolute inset-0 bg-black/50" />
 
                         <div className="relative w-full sm:max-w-6xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
-                            {/* Top bar */}
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                     <div className="text-lg sm:text-xl truncate">Candidate Profile</div>
@@ -533,7 +426,7 @@ export default function CandidatesPage() {
 
                                 <div className="flex items-center gap-2">
                                     <Link
-                                        href={`/staff/candidates/${selectedCandidate.id}/edit`}
+                                        href={`/staff/candidates/${selectedCandidate.documentId}`}
                                         className="rounded-lg bg-red-700 text-white px-3 py-2 text-sm hover:opacity-90"
                                         onClick={closeCandidate}
                                     >
@@ -550,227 +443,239 @@ export default function CandidatesPage() {
                                 </div>
                             </div>
 
-                            {/* Header */}
-                            <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
-                                <div className="flex items-center gap-4">
-                                    <img
-                                        src={safeImgSrc(selectedCandidate.profileImageUrl)}
-                                        alt={selectedCandidate.fullName}
-                                        className="h-28 w-28 rounded-full object-cover border border-gray-200 bg-white"
-                                        onError={(e) => {
-                                            e.currentTarget.onerror = null;
-                                            e.currentTarget.src = DEFAULT_AVATAR;
-                                        }}
-                                    />
-                                    <div>
-                                        <div className="text-xl text-red-700">{selectedCandidate.fullName}</div>
-                                        <div className="text-sm text-gray-600">
-                                            {rolesLabel(selectedCandidate.job_roles)} • <span className="font-medium">{selectedCandidate.jobStatus}</span>
-                                        </div>
+                            {detailLoading ? (
+                                <div className="mt-4 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">Loading details...</div>
+                            ) : detailError ? (
+                                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{detailError}</div>
+                            ) : (
+                                <>
+                                    <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <img
+                                                src={safeImgSrc(detail?.existingMedia?.profileImage?.url || selectedCandidate.profileImageUrl)}
+                                                alt={selectedCandidate.fullName}
+                                                className="h-28 w-28 rounded-full object-cover border border-gray-200 bg-white"
+                                                onError={(e) => {
+                                                    e.currentTarget.onerror = null;
+                                                    e.currentTarget.src = DEFAULT_AVATAR;
+                                                }}
+                                            />
+                                            <div>
+                                                <div className="text-xl text-red-700">{detail?.formDefaults?.fullName || selectedCandidate.fullName}</div>
+                                                <div className="text-sm text-gray-600">
+                                                    {rolesLabel(selectedCandidate.job_roles || [])} •{" "}
+                                                    <span className="font-medium">{detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus || "—"}</span>
+                                                </div>
 
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            <InfoChip label="Suggested:" value={selectedCandidate.suggestedToClientsCount ?? 0} />
-                                            <InfoChip label="Shortlisted:" value={selectedCandidate.shortlistedByClientsCount ?? 0} />
-                                            <InfoChip label="Experience:" value={`${selectedCandidate.numberOfExperience ?? 0}y`} />
-                                            <InfoChip label="Employed:" value={selectedCandidate.currentlyEmployed ? "Yes" : "No"} />
-                                            <InfoChip label="Source:" value={selectedCandidate.source || "—"} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="sm:ml-auto flex items-center gap-2 bg-red-500">
-                                    <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700">
-                                        <VerifiedIcon ok={!!selectedCandidate.isProfileVerifiedList} />
-                                        <span>{selectedCandidate.isProfileVerifiedList ? "Verified" : "Not Verified"}</span>
-                                    </span>
-                                    <StatusPill status={selectedCandidate.jobStatus} />
-                                </div>
-                            </div>
-
-                            {/* Details */}
-                            <div className="mt-4 rounded-xl border border-gray-200 p-3">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                                    {[
-                                        ["Reference", selectedCandidate.referenceNumber],
-                                        ["First Name", selectedCandidate.firstName],
-                                        ["Last Name", selectedCandidate.lastName],
-                                        ["Username", selectedCandidate.username],
-                                        ["Email", selectedCandidate.email],
-                                        ["Mobile", selectedCandidate.mobile],
-                                        ["Birth Date", selectedCandidate.birthDate],
-                                        ["Gender", selectedCandidate.gender],
-                                        ["Nationality", selectedCandidate.nationality],
-                                        ["Marital Status", selectedCandidate.maritalStatus],
-                                        ["Seasonal Status", selectedCandidate.seasonalStatus],
-                                        ["English Level", selectedCandidate.englishLevel],
-                                        ["Passport Expiry", selectedCandidate.passportExpireDate],
-                                    ].map(([k, v]) => (
-                                        <div className="text-xs" key={k}>
-                                            <div className="text-gray-500">{k}</div>
-                                            <div className="text-gray-800 break-words">{v || "—"}</div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    <div className="text-xs">
-                                        <div className="text-gray-500">Short Summary</div>
-                                        <div className="text-gray-800">{selectedCandidate.shortSummary || "—"}</div>
-                                    </div>
-                                    <div className="text-xs">
-                                        <div className="text-gray-500">Private Notes</div>
-                                        <div className="text-gray-800">{selectedCandidate.privateNotes || "—"}</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Passport + Working videos + MI screening video */}
-                            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-                                <div className="rounded-xl border border-gray-200 p-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="text-sm text-gray-800">Passport</div>
-                                        <a
-                                            href={selectedCandidate.passportUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-sm rounded-lg bg-gray-900 text-white px-3 py-2 hover:opacity-90"
-                                        >
-                                            Download
-                                        </a>
-                                    </div>
-                                    <div className="text-xs text-gray-500 mt-2">Expiry: {selectedCandidate.passportExpireDate || "—"}</div>
-                                </div>
-
-                                <div className="rounded-xl border border-gray-200 p-3">
-                                    <div className="text-sm text-gray-800">Working Videos ({selectedCandidate.workingVideoUrls?.length || 0})</div>
-                                    <div className="mt-2 space-y-1">
-                                        {(selectedCandidate.workingVideoUrls || []).length ? (
-                                            selectedCandidate.workingVideoUrls.map((u, idx) => (
-                                                <a
-                                                    key={idx}
-                                                    className="block text-sm text-blue-600 hover:underline truncate"
-                                                    href={u}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                >
-                                                    Video {idx + 1}
-                                                </a>
-                                            ))
-                                        ) : (
-                                            <div className="text-xs text-gray-500">None</div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl border border-gray-200 p-3">
-                                    <div className="text-sm text-gray-800">MI Screening Video</div>
-                                    <div className="mt-2">
-                                        {selectedCandidate.miScreeningVideoUrl ? (
-                                            <a
-                                                className="text-sm text-blue-600 hover:underline"
-                                                href={selectedCandidate.miScreeningVideoUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                            >
-                                                Open Video
-                                            </a>
-                                        ) : (
-                                            <div className="text-xs text-gray-500">None</div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Documents */}
-                            <div className="mt-4 rounded-xl border border-gray-200 p-3">
-                                <div className="text-sm text-gray-800">Documents ({selectedCandidate.documents?.length || 0})</div>
-
-                                <div className="mt-3 space-y-2">
-                                    {(selectedCandidate.documents || []).map((d, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm text-gray-800 truncate">{d.name}</div>
-                                                <div className="text-xs text-gray-600">
-                                                    Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    <InfoChip label="Experience:" value={`${detail?.formDefaults?.numberOfExperience ?? 0}y`} />
+                                                    <InfoChip label="Employed:" value={detail?.formDefaults?.currentlyEmployed ? "Yes" : "No"} />
+                                                    <InfoChip label="Source:" value={detail?.formDefaults?.source || "—"} />
                                                 </div>
                                             </div>
-
-                                            <a
-                                                href={d.url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="w-full sm:w-auto text-center rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:opacity-90"
-                                            >
-                                                Download
-                                            </a>
                                         </div>
-                                    ))}
-                                    {(selectedCandidate.documents || []).length === 0 ? (
-                                        <div className="text-xs text-gray-500">No documents</div>
-                                    ) : null}
-                                </div>
-                            </div>
 
-                            {/* CV Viewer (PDF or Image) */}
-                            <div className="mt-4">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="text-sm text-gray-800">CV Preview</div>
-                                    <a href={selectedCandidate.cvUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
-                                        Open / Download
-                                    </a>
-                                </div>
+                                        <div className="sm:ml-auto flex items-center gap-2">
+                                            <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700">
+                                                <VerifiedIcon ok={isVerifiedValue(detail?.formDefaults?.isProfileVerifiedList || selectedCandidate.isProfileVerifiedList)} />
+                                                <span>{detail?.formDefaults?.isProfileVerifiedList || selectedCandidate.isProfileVerifiedList || "Not Verified"}</span>
+                                            </span>
+                                            <StatusPill status={detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus} />
+                                        </div>
+                                    </div>
 
-                                <div className="mt-2 rounded-xl border border-gray-200 overflow-hidden relative">
-                                    {isPdfUrl(selectedCandidate.cvUrl) ? (
-                                        <>
-                                            {cvLoading && (
-                                                <div className="absolute inset-0 flex items-center justify-center bg-white">
-                                                    <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin" />
+                                    {/* Details */}
+                                    <div className="mt-4 rounded-xl border border-gray-200 p-3">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                            {[
+                                                ["Reference", detail?.formDefaults?.referenceNumber || selectedCandidate.referenceNumber],
+                                                ["First Name", detail?.formDefaults?.firstName],
+                                                ["Last Name", detail?.formDefaults?.lastName],
+                                                ["Username", detail?.formDefaults?.username],
+                                                ["Email", detail?.formDefaults?.email],
+                                                ["Mobile", detail?.formDefaults?.mobile],
+                                                ["Birth Date", detail?.formDefaults?.birthDate],
+                                                ["Gender", detail?.formDefaults?.genderList],
+                                                ["Nationality", detail?.formDefaults?.nationalityList],
+                                                ["Marital Status", detail?.formDefaults?.maritalStatusList],
+                                                ["Seasonal Status", detail?.formDefaults?.seasonalStatusList],
+                                                ["English Level", detail?.formDefaults?.englishLevelList],
+                                                ["Passport Expiry", detail?.formDefaults?.passportExpireDate],
+                                            ].map(([k, v]) => (
+                                                <div className="text-xs" key={k}>
+                                                    <div className="text-gray-500">{k}</div>
+                                                    <div className="text-gray-800 break-words">{v || "—"}</div>
                                                 </div>
-                                            )}
+                                            ))}
+                                        </div>
 
-                                            {cvFailed ? (
-                                                <div className="p-4 sm:p-6">
-                                                    <div className="text-red-700">CV preview failed to load</div>
-                                                    <p className="text-sm text-gray-600 mt-2">Use Open / Download to open in new tab.</p>
+                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <div className="text-xs">
+                                                <div className="text-gray-500">Short Summary</div>
+                                                <div className="text-gray-800">{detail?.formDefaults?.shortSummary || "—"}</div>
+                                            </div>
+                                            <div className="text-xs">
+                                                <div className="text-gray-500">Private Notes</div>
+                                                <div className="text-gray-800">{detail?.formDefaults?.privateNotes || "—"}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Passport + Videos */}
+                                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                        <div className="rounded-xl border border-gray-200 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-sm text-gray-800">Passport</div>
+                                                {detail?.existingMedia?.passport?.url ? (
+                                                    <a
+                                                        href={detail.existingMedia.passport.url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-sm rounded-lg bg-gray-900 text-white px-3 py-2 hover:opacity-90"
+                                                    >
+                                                        Download
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-xs text-gray-500">No file</span>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-2">Expiry: {detail?.formDefaults?.passportExpireDate || "—"}</div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-200 p-3">
+                                            <div className="text-sm text-gray-800">Working Video</div>
+                                            <div className="mt-2">
+                                                {detail?.existingMedia?.workingVideo?.url ? (
+                                                    <a className="text-sm text-blue-600 hover:underline" href={detail.existingMedia.workingVideo.url} target="_blank" rel="noreferrer">
+                                                        Open Video
+                                                    </a>
+                                                ) : (
+                                                    <div className="text-xs text-gray-500">None</div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-gray-200 p-3">
+                                            <div className="text-sm text-gray-800">MI Screening Video</div>
+                                            <div className="mt-2">
+                                                {detail?.existingMedia?.miScreeningVideo?.url ? (
+                                                    <a
+                                                        className="text-sm text-blue-600 hover:underline"
+                                                        href={detail.existingMedia.miScreeningVideo.url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                    >
+                                                        Open Video
+                                                    </a>
+                                                ) : (
+                                                    <div className="text-xs text-gray-500">None</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Documents */}
+                                    <div className="mt-4 rounded-xl border border-gray-200 p-3">
+                                        <div className="text-sm text-gray-800">Documents ({detail?.formDefaults?.documents?.length || 0})</div>
+
+                                        <div className="mt-3 space-y-2">
+                                            {(detail?.formDefaults?.documents || []).map((d, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-sm text-gray-800 truncate">{d.name || "—"}</div>
+                                                        <div className="text-xs text-gray-600">
+                                                            Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {d.existingUrl ? (
+                                                        <a
+                                                            href={d.existingUrl}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="w-full sm:w-auto text-center rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:opacity-90"
+                                                        >
+                                                            Download
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-500">No file</span>
+                                                    )}
                                                 </div>
+                                            ))}
+                                            {(detail?.formDefaults?.documents || []).length === 0 ? (
+                                                <div className="text-xs text-gray-500">No documents</div>
+                                            ) : null}
+                                        </div>
+                                    </div>
+
+                                    {/* CV Viewer */}
+                                    <div className="mt-4">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-sm text-gray-800">CV Preview</div>
+                                            {detail?.existingMedia?.CV?.url ? (
+                                                <a href={detail.existingMedia.CV.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
+                                                    Open / Download
+                                                </a>
                                             ) : (
-                                                <div className="h-[65vh] sm:h-[78vh]">
-                                                    <iframe
-                                                        src={selectedCandidate.cvUrl}
-                                                        title="CV PDF"
-                                                        className="w-full h-full"
-                                                        onLoad={() => {
-                                                            cvLoadedRef.current = true;
-                                                            setCvLoading(false);
-                                                            setCvFailed(false);
-                                                            if (cvTimeoutRef.current) {
-                                                                clearTimeout(cvTimeoutRef.current);
-                                                                cvTimeoutRef.current = null;
-                                                            }
-                                                        }}
-                                                    />
-                                                </div>
+                                                <span className="text-xs text-gray-500">No file</span>
                                             )}
-                                        </>
-                                    ) : (
-                                        <div className="p-3 bg-gray-50">
-                                            <img
-                                                src={selectedCandidate.cvUrl}
-                                                alt="CV"
-                                                className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-200 bg-white"
-                                            />
                                         </div>
-                                    )}
-                                </div>
 
-                                <p className="mt-2 text-xs text-gray-500">
-                                    Tip: If preview doesn’t load, click <span className="text-gray-700">Open / Download</span>.
-                                </p>
-                            </div>
+                                        {detail?.existingMedia?.CV?.url ? (
+                                            <div className="mt-2 rounded-xl border border-gray-200 overflow-hidden relative">
+                                                {isPdfUrl(detail.existingMedia.CV.url) ? (
+                                                    <>
+                                                        {cvLoading && (
+                                                            <div className="absolute inset-0 flex items-center justify-center bg-white">
+                                                                <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin" />
+                                                            </div>
+                                                        )}
+
+                                                        {cvFailed ? (
+                                                            <div className="p-4 sm:p-6">
+                                                                <div className="text-red-700">CV preview failed to load</div>
+                                                                <p className="text-sm text-gray-600 mt-2">Use Open / Download to open in new tab.</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="h-[65vh] sm:h-[78vh]">
+                                                                <iframe
+                                                                    src={detail.existingMedia.CV.url}
+                                                                    title="CV PDF"
+                                                                    className="w-full h-full"
+                                                                    onLoad={() => {
+                                                                        cvLoadedRef.current = true;
+                                                                        setCvLoading(false);
+                                                                        setCvFailed(false);
+                                                                        if (cvTimeoutRef.current) {
+                                                                            clearTimeout(cvTimeoutRef.current);
+                                                                            cvTimeoutRef.current = null;
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <div className="p-3 bg-gray-50">
+                                                        <img
+                                                            src={detail.existingMedia.CV.url}
+                                                            alt="CV"
+                                                            className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-200 bg-white"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : null}
+
+                                        <p className="mt-2 text-xs text-gray-500">
+                                            Tip: If preview doesn’t load, click <span className="text-gray-700">Open / Download</span>.
+                                        </p>
+                                    </div>
+                                </>
+                            )}
 
                             <div className="mt-4 flex justify-end">
                                 <button

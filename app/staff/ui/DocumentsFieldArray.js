@@ -58,18 +58,7 @@ function DropzoneMini({ value, onChange, error, existingUrl }) {
                     Accepted: pdf, jpg, png, webp
                 </div>
 
-                {existingUrl ? (
-                    <div className="mt-2 text-xs">
-                        <a
-                            href={existingUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline"
-                        >
-                            Open existing file
-                        </a>
-                    </div>
-                ) : null}
+
 
                 {file ? (
                     <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2">
@@ -81,9 +70,26 @@ function DropzoneMini({ value, onChange, error, existingUrl }) {
                 ) : (
                     <div className="mt-3 text-xs text-gray-500">No new file selected.</div>
                 )}
+
+
             </div>
 
             <div className="flex items-center justify-between gap-2">
+
+                {existingUrl ? (
+                    <div className="mt-2 text-xs">
+                        <a
+                            href={existingUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-red-600 hover:underline"
+                        >
+                            Open existing file
+                        </a>
+                    </div>
+                ) : null}
+
+
                 <div className="text-xs text-gray-500">
                     {file ? "New file selected" : existingUrl ? "Using existing file" : ""}
                 </div>

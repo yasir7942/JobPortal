@@ -181,6 +181,8 @@ export async function POST(req) {
             previousJobExperiece: toNumberOrNull(payload.previousJobExperiece),
 
             previousCompany: payload.previousCompany || "",
+            currentCompany: payload.currentCompany || "",
+
             currentlyEmployed: !!payload.currentlyEmployed,
             dateScreeningInterview: payload.dateScreeningInterview || null,
 
@@ -380,6 +382,8 @@ export async function POST(req) {
             `candidates/${candidateDocumentId}?status=published&populate=*`,
             { method: "GET", useAuth: true }
         );
+
+        console.log("Final created candidate:", populated);
 
         return Response.json(
             {

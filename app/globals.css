@@ -27,7 +27,7 @@ body {
 
 
 button:disabled {
-  cursor: not-allowed !important;
+  cursor: text !important;
   border-radius: 1.5rem;
 }
 button:not(:disabled) {
