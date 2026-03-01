@@ -310,6 +310,12 @@ export default function ClientsPage() {
                                                     >
                                                         Edit
                                                     </Link>
+                                                    <Link
+                                                        href={`/client/${c.documentId}/dashboard`}
+                                                        className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-gray-50"
+                                                    >
+                                                        Client Dashboard
+                                                    </Link>
                                                 </div>
                                             </td>
                                         </tr>
@@ -377,9 +383,17 @@ export default function ClientsPage() {
                                         Edit Client
                                     </Link>
 
+                                    <Link
+                                        href={`/client/${selected.documentId}/dashboard`}
+                                        className="rounded-lg bg-red-700 text-white px-3 py-2 text-sm hover:opacity-90"
+                                        onClick={closeModal}
+                                    >
+                                        Client Dashboard
+                                    </Link>
+
                                     <button
                                         onClick={closeModal}
-                                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                         type="button"
                                     >
                                         Close
@@ -388,7 +402,7 @@ export default function ClientsPage() {
                             </div>
 
                             {detailLoading ? (
-                                <div className="mt-4 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">
+                                <div className="mt-4 rounded-xl border border-gray-300 p-4 text-sm text-gray-700">
                                     Loading details...
                                 </div>
                             ) : detailError ? (

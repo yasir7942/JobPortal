@@ -2,7 +2,9 @@
   "genders": ["Male", "Female", "Undisclosed"],
   "maritalStatus": ["Single", "Married", "Divorced", "Widowed"],
   "englishLevel": ["Average", "Basic", "Below Basic", "Excellent"],
-  "jobStatus": ["Available", "Working", "On Hold", "Blacklisted"],
+  "jobStatus": ["Open", "Working", "On Hold", "Close"],
+   "jobType": ["Permanent", "Contract", "Seasonal", "Temporary", "Part Time"],
+   "showToCandidate":["Only Job Title","Complete Job","Job and Company"],
   "isProfileVerified": ["Documents Pending", "Verified", "On Hold", "Blacklisted"],
    "companySize": ["Micro", "Small", "Medium", "Large"],
   "yesNo": [
@@ -10,6 +12,7 @@
     { "label": "No", "value": false }
   ],
   "status": ["Active", "Inactive"],
+   
   "industries": [
     "Construction / Civil Engineering",
     "Hospitality",
