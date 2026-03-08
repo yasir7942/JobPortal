@@ -114,7 +114,7 @@ export async function GET(req) {
         const items = data.map((it) => {
             const j = unwrapCollectionItem(it) || {};
             const documentId = j?.documentId || it?.documentId || j?.id || it?.id;
-            console.log("Parsed Job", { documentId, j, it });
+            //  console.log("Parsed Job", { documentId, j, it });
             return {
                 id: j?.id ?? it?.id ?? null,
                 documentId: documentId ? String(documentId) : "",

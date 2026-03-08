@@ -521,7 +521,7 @@ function getDummy(id) {
 
         passportExpireDate: "2028-06-30",
 
-        existingProfileImageUrl: "https://i.pravatar.cc/300?img=12",
+        existingProfileImageUrl: "https://placehold.net/avatar.svg",
         existingCvUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
         existingPassportUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
         existingWorkingVideoUrls: [

@@ -75,7 +75,7 @@ export default function Header() {
                 {/* Left: profile + welcome */}
                 <div className="flex items-center gap-3 shrink-0">
                     <img
-                        src="https://i.pravatar.cc/80?img=12"
+                        src="https://placehold.net/avatar.svg"
                         alt="Profile"
                         className="h-12 w-12 sm:h-16 sm:w-16 rounded-full object-cover"
                     />
@@ -132,7 +132,7 @@ export default function Header() {
                         className="hidden sm:flex flex-col items-center"
                     >
                         <img
-                            src="https://i.pravatar.cc/80?img=12"
+                            src="https://placehold.net/avatar.svg"
                             alt="Logo"
                             className="h-10 w-10 sm:h-12 sm:w-12 rounded-full object-cover"
                         />
@@ -177,7 +177,7 @@ export default function Header() {
                         <div className="flex items-center justify-between px-4 py-4 border-b">
                             <div className="flex items-center gap-3">
                                 <img
-                                    src="https://i.pravatar.cc/80?img=12"
+                                    src="https://placehold.net/avatar.svg"
                                     alt="Profile"
                                     className="h-11 w-11 rounded-full object-cover"
                                 />

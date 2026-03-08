@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Header from "@/app/components/layouts/client/Header";
 
 const DUMMY_PDF =
-    "https://lubrex.net/wp-content/uploads/2025/11/VELOCITY-PRIME.pdf";
+    "";
 
 function VerifiedBadge({ ok }) {
     return ok ? (

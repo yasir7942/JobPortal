@@ -7,6 +7,7 @@
    "showToCandidate":["Only Job Title","Complete Job","Job and Company"],
   "isProfileVerified": ["Documents Pending", "Verified", "On Hold", "Blacklisted"],
    "companySize": ["Micro", "Small", "Medium", "Large"],
+    "candidateProcess": ["Suggested Candidate", "Shortlisted Candidate", "Requested Interview", "Hired Candidate"],
   "yesNo": [
     { "label": "Yes", "value": true },
     { "label": "No", "value": false }
