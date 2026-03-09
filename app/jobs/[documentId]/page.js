@@ -87,6 +87,14 @@ function normalizeProcessLabel(to) {
     return String(to);
 }
 
+function processKeyFromLabel(v) {
+    const x = String(v || "").trim().toLowerCase();
+    if (x === "shortlisted candidate") return "shortlisted";
+    if (x === "requested interview") return "interview";
+    if (x === "hired candidate") return "hired";
+    return "suggested";
+}
+
 function formatDate(value) {
     if (!value) return "—";
     const d = new Date(value);
@@ -115,6 +123,42 @@ function extractIframeData(value) {
         src: srcMatch?.[1] || "",
         title: titleMatch?.[1] || "Video Player",
     };
+}
+
+function withProcess(items, processKey) {
+    return (Array.isArray(items) ? items : []).map((x) => ({
+        ...x,
+        currentProcess: processKey,
+    }));
+}
+
+function ensureOfferLetterShape(value) {
+    if (!value || typeof value !== "object") return null;
+    if (!value.url && !value.name && !value.id) return null;
+    return {
+        id: value.id ?? null,
+        name: value.name || "",
+        url: value.url || "",
+    };
+}
+
+function updateCandidateInList(list, candidateDocumentId, patch) {
+    return (Array.isArray(list) ? list : []).map((item) =>
+        String(item?.documentId) === String(candidateDocumentId)
+            ? { ...item, ...patch }
+            : item
+    );
+}
+
+function removeCandidateFromList(list, candidateDocumentId) {
+    return (Array.isArray(list) ? list : []).filter(
+        (item) => String(item?.documentId) !== String(candidateDocumentId)
+    );
+}
+
+function upsertCandidateAtTop(list, candidate) {
+    const next = removeCandidateFromList(list, candidate?.documentId);
+    return [candidate, ...next];
 }
 
 function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
@@ -175,7 +219,7 @@ function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
                 if (e.target === e.currentTarget) onClose();
             }}
         >
-            <div className="mx-auto grid h-[80vh] w-[95vw] lg:w-[75vw] max-w-[1100px]  grid-rows-[auto_1fr] overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="mx-auto grid h-[80vh] w-[95vw] lg:w-[75vw] max-w-[1100px] grid-rows-[auto_1fr] overflow-hidden rounded-xl bg-white shadow-2xl">
                 <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
                     <div className="min-w-0">
                         <div className="truncate text-base font-bold text-gray-900 sm:text-lg">
@@ -202,7 +246,7 @@ function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
                     ) : loadFailed ? (
                         <div className="flex h-full flex-col items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-6 text-center">
                             <div className="text-lg font-bold text-red-700">Video preview failed to load</div>
-                            <div className="mt-2 text-sm text-gray-600 break-all">{iframeData.src}</div>
+                            <div className="mt-2 break-all text-sm text-gray-600">{iframeData.src}</div>
                             <a
                                 href={iframeData.src}
                                 target="_blank"
@@ -213,7 +257,7 @@ function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
                             </a>
                         </div>
                     ) : (
-                        <div className="relative h-[80%] w-[80%] overflow-hidden rounded-xl border border-gray-200 bg-black">
+                        <div className="relative h-full w-full overflow-hidden rounded-xl border border-gray-200 bg-black">
                             {loading && (
                                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white">
                                     <img
@@ -227,7 +271,7 @@ function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
 
                             <div
                                 className="absolute inset-0"
-                                style={{ position: "relative", paddingTop: "56.25%", height: "70%" }}
+                                style={{ position: "relative", paddingTop: "56.25%", height: "100%" }}
                             >
                                 <iframe
                                     src={iframeData.src}
@@ -238,7 +282,7 @@ function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
                                         top: 0,
                                         left: 0,
                                         width: "100%",
-                                        height: "70%",
+                                        height: "100%",
                                         border: "none",
                                     }}
                                     onLoad={() => {
@@ -251,6 +295,153 @@ function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
                             </div>
                         </div>
                     )}
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+function OfferLetterModal({
+    open,
+    candidate,
+    onClose,
+    onUpload,
+    onRemove,
+    submitting,
+    error,
+}) {
+    const [mounted, setMounted] = useState(false);
+    const [file, setFile] = useState(null);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (open) setFile(null);
+    }, [open, candidate?.documentId]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onKey = (e) => {
+            if (e.key === "Escape") onClose();
+        };
+
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        window.addEventListener("keydown", onKey);
+
+        return () => {
+            document.body.style.overflow = prevOverflow;
+            window.removeEventListener("keydown", onKey);
+        };
+    }, [open, onClose]);
+
+    if (!open || !mounted || !candidate) return null;
+
+    const offer = ensureOfferLetterShape(candidate?.offerLetter);
+
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[310] flex items-center justify-center bg-black/70 p-3"
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
+            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
+                    <div>
+                        <div className="text-lg font-bold text-gray-900">
+                            {offer ? "View / Edit Offer Letter" : "Upload Offer Letter"}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                            {candidate?.fullName || "Candidate"} • {candidate?.referenceNumber || "—"}
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={onClose}
+                        className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                        Close
+                    </button>
+                </div>
+
+                <div className="space-y-4 p-4 sm:p-6">
+                    {offer ? (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                            <div className="text-sm font-semibold text-gray-800">
+                                Current Offer Letter
+                            </div>
+                            <div className="mt-1 break-all text-sm text-gray-600">
+                                {offer?.name || "Offer Letter"}
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {offer?.url ? (
+                                    <a
+                                        href={offer.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:opacity-90"
+                                    >
+                                        View Offer Letter
+                                    </a>
+                                ) : null}
+
+                                <button
+                                    onClick={() => onRemove(candidate)}
+                                    disabled={submitting}
+                                    className="rounded-lg border border-red-600 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    Remove Offer Letter
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <div>
+                        <label className="mb-2 block text-sm font-semibold text-gray-800">
+                            {offer ? "Replace Offer Letter" : "Select Offer Letter"}
+                        </label>
+                        <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) => setFile(e.target.files?.[0] || null)}
+                            className="block w-full rounded-lg border border-gray-300 p-3 text-sm"
+                        />
+                        <div className="mt-2 text-xs text-gray-500">
+                            Allowed: PDF, JPG, JPEG, PNG
+                        </div>
+                    </div>
+
+                    {error ? (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {error}
+                        </div>
+                    ) : null}
+
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        <button
+                            onClick={onClose}
+                            disabled={submitting}
+                            className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            Cancel
+                        </button>
+
+                        <button
+                            onClick={() => onUpload(candidate, file)}
+                            disabled={submitting || !file}
+                            className="rounded-lg bg-red-700 px-4 py-2 text-sm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {submitting ? "Saving..." : offer ? "Update Offer Letter" : "Upload Offer Letter"}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>,
@@ -278,6 +469,13 @@ export default function JobCandidatesPage() {
         title: "",
         iframeHtmlFromDb: "",
     });
+
+    const [offerModal, setOfferModal] = useState({
+        open: false,
+        candidate: null,
+    });
+    const [offerSubmitting, setOfferSubmitting] = useState(false);
+    const [offerError, setOfferError] = useState("");
 
     const cvTimeoutRef = useRef(null);
     const cvLoadedRef = useRef(false);
@@ -307,6 +505,22 @@ export default function JobCandidatesPage() {
         });
     }
 
+    function openOfferModal(candidate) {
+        setOfferError("");
+        setOfferModal({
+            open: true,
+            candidate,
+        });
+    }
+
+    function closeOfferModal() {
+        setOfferError("");
+        setOfferModal({
+            open: false,
+            candidate: null,
+        });
+    }
+
     function closeCandidate() {
         setSelectedCandidate(null);
         setCvLoading(false);
@@ -315,6 +529,52 @@ export default function JobCandidatesPage() {
 
         if (cvTimeoutRef.current) clearTimeout(cvTimeoutRef.current);
         cvTimeoutRef.current = null;
+    }
+
+    function refreshCandidateAcrossState(candidateDocumentId, patch) {
+        setSuggestedCandidates((prev) => updateCandidateInList(prev, candidateDocumentId, patch));
+        setShortlistedCandidates((prev) => updateCandidateInList(prev, candidateDocumentId, patch));
+        setRequestedInterviewCandidates((prev) => updateCandidateInList(prev, candidateDocumentId, patch));
+        setHiredCandidates((prev) => updateCandidateInList(prev, candidateDocumentId, patch));
+
+        setSelectedCandidate((prev) =>
+            String(prev?.documentId) === String(candidateDocumentId)
+                ? { ...prev, ...patch }
+                : prev
+        );
+
+        setOfferModal((prev) =>
+            String(prev?.candidate?.documentId) === String(candidateDocumentId)
+                ? { ...prev, candidate: { ...prev.candidate, ...patch } }
+                : prev
+        );
+    }
+
+    async function hydrateHiredOfferLetters(list) {
+        if (!Array.isArray(list) || list.length === 0) return list;
+
+        const results = await Promise.all(
+            list.map(async (candidate) => {
+                try {
+                    const qs = new URLSearchParams({
+                        jobDocumentId: String(jobDocumentId || ""),
+                        candidateDocumentId: String(candidate?.documentId || ""),
+                    });
+                    const json = await fetchJsonSafe(`/api/jobs/candidates/move?${qs.toString()}`);
+                    return {
+                        ...candidate,
+                        offerLetter: ensureOfferLetterShape(json?.offerLetter),
+                    };
+                } catch {
+                    return {
+                        ...candidate,
+                        offerLetter: ensureOfferLetterShape(candidate?.offerLetter),
+                    };
+                }
+            })
+        );
+
+        return results;
     }
 
     useEffect(() => {
@@ -360,11 +620,19 @@ export default function JobCandidatesPage() {
                 const json = await fetchJsonSafe(`/api/jobs/candidates/get/${jobDocumentId}`);
                 if (ignore) return;
 
+                const suggested = withProcess(json?.lists?.suggested || [], "suggested");
+                const shortlisted = withProcess(json?.lists?.shortlisted || [], "shortlisted");
+                const interview = withProcess(json?.lists?.interview || [], "interview");
+                const hiredRaw = withProcess(json?.lists?.hired || [], "hired");
+                const hired = await hydrateHiredOfferLetters(hiredRaw);
+
+                if (ignore) return;
+
                 setJob(json?.job || null);
-                setSuggestedCandidates(json?.lists?.suggested || []);
-                setShortlistedCandidates(json?.lists?.shortlisted || []);
-                setRequestedInterviewCandidates(json?.lists?.interview || []);
-                setHiredCandidates(json?.lists?.hired || []);
+                setSuggestedCandidates(suggested);
+                setShortlistedCandidates(shortlisted);
+                setRequestedInterviewCandidates(interview);
+                setHiredCandidates(hired);
             } catch (e) {
                 if (!ignore) setJobErr(e?.message || "Failed to load job");
             } finally {
@@ -379,50 +647,116 @@ export default function JobCandidatesPage() {
         };
     }, [jobDocumentId]);
 
-    const byDocId = (arr, docId) => arr.filter((x) => String(x?.documentId) !== String(docId));
-    const exists = (arr, docId) => arr.some((x) => String(x?.documentId) === String(docId));
-
     async function moveCandidateTo(candidate, toKeyOrLabel) {
         if (!jobDocumentId || !candidate?.documentId) return;
 
         const toLabel = normalizeProcessLabel(toKeyOrLabel);
+        const toKey = processKeyFromLabel(toLabel);
 
-        setSuggestedCandidates((p) => byDocId(p, candidate.documentId));
-        setShortlistedCandidates((p) => byDocId(p, candidate.documentId));
-        setRequestedInterviewCandidates((p) => byDocId(p, candidate.documentId));
-        setHiredCandidates((p) => byDocId(p, candidate.documentId));
+        if (candidate?.currentProcess === toKey) return;
 
-        if (toLabel === normalizeProcessLabel("suggested")) {
-            setSuggestedCandidates((p) => (exists(p, candidate.documentId) ? p : [candidate, ...p]));
-        } else if (toLabel === normalizeProcessLabel("shortlisted")) {
-            setShortlistedCandidates((p) => (exists(p, candidate.documentId) ? p : [candidate, ...p]));
-        } else if (toLabel === normalizeProcessLabel("interview")) {
-            setRequestedInterviewCandidates((p) => (exists(p, candidate.documentId) ? p : [candidate, ...p]));
-        } else if (toLabel === normalizeProcessLabel("hired")) {
-            setHiredCandidates((p) => (exists(p, candidate.documentId) ? p : [candidate, ...p]));
+        const movedCandidate = {
+            ...candidate,
+            currentProcess: toKey,
+        };
+
+        const oldSuggested = suggestedCandidates;
+        const oldShortlisted = shortlistedCandidates;
+        const oldInterview = requestedInterviewCandidates;
+        const oldHired = hiredCandidates;
+        const oldSelected = selectedCandidate;
+
+        setSuggestedCandidates((prev) => removeCandidateFromList(prev, candidate.documentId));
+        setShortlistedCandidates((prev) => removeCandidateFromList(prev, candidate.documentId));
+        setRequestedInterviewCandidates((prev) => removeCandidateFromList(prev, candidate.documentId));
+        setHiredCandidates((prev) => removeCandidateFromList(prev, candidate.documentId));
+
+        if (toKey === "suggested") {
+            setSuggestedCandidates((prev) => upsertCandidateAtTop(prev, movedCandidate));
+        } else if (toKey === "shortlisted") {
+            setShortlistedCandidates((prev) => upsertCandidateAtTop(prev, movedCandidate));
+        } else if (toKey === "interview") {
+            setRequestedInterviewCandidates((prev) => upsertCandidateAtTop(prev, movedCandidate));
+        } else if (toKey === "hired") {
+            setHiredCandidates((prev) => upsertCandidateAtTop(prev, movedCandidate));
         }
+
+        if (String(selectedCandidate?.documentId) === String(candidate?.documentId)) {
+            setSelectedCandidate(movedCandidate);
+        }
+
+        try {
+            const json = await fetchJsonSafe(`/api/jobs/candidates/move`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jobDocumentId,
+                    candidateDocumentId: candidate.documentId,
+                    action: toLabel,
+                }),
+            });
+
+            const patch = {
+                currentProcess: toKey,
+                offerLetter: ensureOfferLetterShape(json?.offerLetter) ?? ensureOfferLetterShape(candidate?.offerLetter),
+            };
+            refreshCandidateAcrossState(candidate.documentId, patch);
+        } catch (e) {
+            setSuggestedCandidates(oldSuggested);
+            setShortlistedCandidates(oldShortlisted);
+            setRequestedInterviewCandidates(oldInterview);
+            setHiredCandidates(oldHired);
+            setSelectedCandidate(oldSelected);
+            alert(e?.message || "Failed to update job in Strapi");
+        }
+    }
+
+    async function handleUploadOfferLetter(candidate, file) {
+        if (!file) return;
+
+        const fd = new FormData();
+        fd.append("action", "uploadOfferLetter");
+        fd.append("jobDocumentId", jobDocumentId);
+        fd.append("candidateDocumentId", candidate.documentId);
+        fd.append("file", file);
+
+        const res = await fetch("/api/jobs/candidates/move", {
+            method: "POST",
+            body: fd,
+        });
+
+        const json = await res.json();
+
+        if (!res.ok || json?.ok === false) {
+            throw new Error(json?.error || "Upload failed");
+        }
+
+        return json;
+    }
+
+    async function handleRemoveOfferLetter(candidate) {
+        if (!jobDocumentId || !candidate?.documentId) return;
+
+        setOfferSubmitting(true);
+        setOfferError("");
 
         try {
             await fetchJsonSafe(`/api/jobs/candidates/move`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    action: "removeOfferLetter",
                     jobDocumentId,
                     candidateDocumentId: candidate.documentId,
-                    to: toLabel,
-                    removeFromOthers: true,
                 }),
             });
-        } catch (e) {
-            alert(e?.message || "Failed to update job in Strapi");
 
-            try {
-                const json = await fetchJsonSafe(`/api/jobs/candidates/get/${jobDocumentId}`);
-                setSuggestedCandidates(json?.lists?.suggested || []);
-                setShortlistedCandidates(json?.lists?.shortlisted || []);
-                setRequestedInterviewCandidates(json?.lists?.interview || []);
-                setHiredCandidates(json?.lists?.hired || []);
-            } catch { }
+            refreshCandidateAcrossState(candidate.documentId, { offerLetter: null });
+            closeOfferModal();
+        } catch (e) {
+            setOfferError(e?.message || "Failed to remove offer letter");
+        } finally {
+            setOfferSubmitting(false);
         }
     }
 
@@ -436,36 +770,57 @@ export default function JobCandidatesPage() {
             documents: Array.isArray(selectedCandidate.documents) ? selectedCandidate.documents : [],
             workingVideoIframe: selectedCandidate.workingVideoIframe || "",
             miScreeningVideoIframe: selectedCandidate.miScreeningVideoIframe || "",
+            offerLetter: ensureOfferLetterShape(selectedCandidate.offerLetter),
         };
     }, [selectedCandidate]);
 
-    const renderCandidateCard = (c) => (
-        <div key={c.documentId || c.id} className="relative rounded-2xl bg-gray-100 p-3">
-            <div className="flex items-center gap-3 pr-9">
-                <img
-                    src={c.avatar}
-                    alt={c.fullName || "Candidate"}
-                    className="h-16 w-16 rounded-full border border-white bg-white object-cover"
-                />
-                <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-red-600">{c.fullName || "—"}</div>
-                    <div className="truncate text-xs text-gray-700">{c.nationality || "—"}</div>
-                    <div className="truncate text-[11px] text-gray-800">{c.referenceNumber || "—"}</div>
+    const renderCandidateCard = (c, sectionKey) => {
+        const offer = ensureOfferLetterShape(c?.offerLetter);
+
+        return (
+            <div key={c.documentId || c.id} className="relative rounded-2xl bg-gray-100 p-3">
+                <div className="flex items-center gap-3 pr-9">
+                    <img
+                        src={c.avatar}
+                        alt={c.fullName || "Candidate"}
+                        className="h-16 w-16 rounded-full border border-white bg-white object-cover"
+                    />
+                    <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-red-600">{c.fullName || "—"}</div>
+                        <div className="truncate text-xs text-gray-700">{c.nationality || "—"}</div>
+                        <div className="truncate text-[11px] text-gray-800">{c.referenceNumber || "—"}</div>
+                    </div>
+                </div>
+
+                {c.shortSummary ? (
+                    <p className="mt-2 line-clamp-2 text-xs text-gray-700">{c.shortSummary}</p>
+                ) : null}
+
+                <div className="mt-3 space-y-2">
+                    <button
+                        onClick={() => setSelectedCandidate(c)}
+                        className="w-full rounded-lg border border-red-600 bg-red-600 px-3 py-2 text-sm text-white hover:bg-gray-50 hover:text-gray-800"
+                    >
+                        View Profile
+                    </button>
+
+                    {sectionKey === "hired" ? (
+                        <button
+                            onClick={() => openOfferModal(c)}
+                            className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
+                        >
+                            {offer ? "View Offer Letter" : "Upload Offer Letter"}
+                        </button>
+                    ) : null}
                 </div>
             </div>
+        );
+    };
 
-            {c.shortSummary ? (
-                <p className="mt-2 line-clamp-2 text-xs text-gray-700">{c.shortSummary}</p>
-            ) : null}
-
-            <button
-                onClick={() => setSelectedCandidate(c)}
-                className="mt-3 w-full rounded-lg border border-red-600 bg-red-600 px-3 py-2 text-sm text-white hover:bg-gray-50 hover:text-gray-800"
-            >
-                View Profile
-            </button>
-        </div>
-    );
+    const isInSuggested = candidateForPopup?.currentProcess === "suggested";
+    const isInShortlisted = candidateForPopup?.currentProcess === "shortlisted";
+    const isInInterview = candidateForPopup?.currentProcess === "interview";
+    const isInHired = candidateForPopup?.currentProcess === "hired";
 
     return (
         <>
@@ -570,7 +925,7 @@ export default function JobCandidatesPage() {
                         <div className="mt-3 text-sm text-gray-600">No suggested candidates.</div>
                     ) : (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-                            {suggestedCandidates.map(renderCandidateCard)}
+                            {suggestedCandidates.map((c) => renderCandidateCard(c, "suggested"))}
                         </div>
                     )}
                 </div>
@@ -584,7 +939,7 @@ export default function JobCandidatesPage() {
                         <div className="mt-3 text-sm text-gray-600">No shortlisted candidates.</div>
                     ) : (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-                            {shortlistedCandidates.map(renderCandidateCard)}
+                            {shortlistedCandidates.map((c) => renderCandidateCard(c, "shortlisted"))}
                         </div>
                     )}
                 </div>
@@ -599,7 +954,7 @@ export default function JobCandidatesPage() {
                         <div className="mt-3 text-sm text-gray-600">No interview requests yet.</div>
                     ) : (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-                            {requestedInterviewCandidates.map(renderCandidateCard)}
+                            {requestedInterviewCandidates.map((c) => renderCandidateCard(c, "interview"))}
                         </div>
                     )}
                 </div>
@@ -613,7 +968,7 @@ export default function JobCandidatesPage() {
                         <div className="mt-3 text-sm text-gray-600">No hired candidates yet.</div>
                     ) : (
                         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-                            {hiredCandidates.map(renderCandidateCard)}
+                            {hiredCandidates.map((c) => renderCandidateCard(c, "hired"))}
                         </div>
                     )}
                 </div>
@@ -647,25 +1002,39 @@ export default function JobCandidatesPage() {
                             </button>
                         </div>
 
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                             <button
                                 onClick={() => moveCandidateTo(candidateForPopup, "shortlisted")}
-                                className="w-full rounded-lg border px-4 py-2 text-sm hover:bg-gray-50 sm:w-auto"
+                                disabled={isInShortlisted}
+                                className="w-full rounded-lg border px-4 py-2 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 sm:w-auto"
                             >
                                 Shortlist Candidate
                             </button>
+
                             <button
                                 onClick={() => moveCandidateTo(candidateForPopup, "interview")}
-                                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:opacity-90 sm:w-auto"
+                                disabled={isInInterview}
+                                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:bg-blue-300 sm:w-auto"
                             >
                                 Request Interview
                             </button>
+
                             <button
                                 onClick={() => moveCandidateTo(candidateForPopup, "hired")}
-                                className="w-full rounded-lg bg-red-700 px-4 py-2 text-sm text-white hover:opacity-90 sm:w-auto"
+                                disabled={isInHired}
+                                className="w-full rounded-lg bg-red-700 px-4 py-2 text-sm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:bg-red-300 sm:w-auto"
                             >
                                 Hire This Candidate
                             </button>
+
+                            {isInHired ? (
+                                <button
+                                    onClick={() => openOfferModal(candidateForPopup)}
+                                    className="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm text-white hover:opacity-90 sm:w-auto"
+                                >
+                                    {candidateForPopup?.offerLetter ? "View Offer Letter" : "Upload Offer Letter"}
+                                </button>
+                            ) : null}
                         </div>
 
                         <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -678,6 +1047,9 @@ export default function JobCandidatesPage() {
                                 <div>
                                     <div className="text-xl font-bold text-red-600">{candidateForPopup.fullName || "—"}</div>
                                     <div className="text-sm text-gray-600">{candidateForPopup.nationality || "—"}</div>
+                                    <div className="mt-1 text-xs font-semibold text-gray-500">
+                                        Current Stage: {normalizeProcessLabel(candidateForPopup?.currentProcess)}
+                                    </div>
                                 </div>
                             </div>
 
@@ -787,6 +1159,39 @@ export default function JobCandidatesPage() {
                             </div>
                         </div>
 
+                        {candidateForPopup?.offerLetter ? (
+                            <div className="mt-4 rounded-xl border border-gray-400 p-3">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-800">Offer Letter</div>
+                                        <div className="text-xs text-gray-600">
+                                            {candidateForPopup.offerLetter?.name || "Offer Letter"}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        {candidateForPopup.offerLetter?.url ? (
+                                            <a
+                                                href={candidateForPopup.offerLetter.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
+                                            >
+                                                View Offer Letter
+                                            </a>
+                                        ) : null}
+
+                                        <button
+                                            onClick={() => openOfferModal(candidateForPopup)}
+                                            className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                                        >
+                                            Edit Offer Letter
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
                         <div className="mt-4 rounded-xl border border-gray-400 p-3">
                             <div className="text-sm text-gray-800">
                                 Documents ({candidateForPopup?.documents?.length || 0})
@@ -868,8 +1273,6 @@ export default function JobCandidatesPage() {
                                     </div>
                                 ) : (
                                     <div className="h-[65vh] sm:h-[78vh]">
-
-
                                         <iframe
                                             src={candidateForPopup.cvUrl}
                                             title="CV PDF"
@@ -919,6 +1322,16 @@ export default function JobCandidatesPage() {
                 title={videoModal.title}
                 iframeHtmlFromDb={videoModal.iframeHtmlFromDb}
                 onClose={closeVideoModal}
+            />
+
+            <OfferLetterModal
+                open={offerModal.open}
+                candidate={offerModal.candidate}
+                onClose={closeOfferModal}
+                onUpload={handleUploadOfferLetter}
+                onRemove={handleRemoveOfferLetter}
+                submitting={offerSubmitting}
+                error={offerError}
             />
         </>
     );
