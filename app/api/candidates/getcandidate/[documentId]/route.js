@@ -26,7 +26,6 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
     const name = attrs?.name ?? "";
     const url = attrs?.url ?? "";
 
-    // STRAPI_BASE_URL = http://127.0.0.1:1337/api
     const origin = String(STRAPI_BASE_URL || "").replace(/\/api\/?$/, "");
 
     const absUrl = url
@@ -41,7 +40,7 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
 function unwrapCandidate(parsed) {
     const rec = parsed?.data ?? null;
     if (!rec) return null;
-    return rec?.attributes ? { id: rec.id, ...rec.attributes } : rec;
+    return rec?.attributes ? { id: rec.id, documentId: rec.documentId ?? rec.attributes?.documentId, ...rec.attributes } : rec;
 }
 
 function pickRelIds(rel) {
@@ -64,14 +63,13 @@ function getUserFromRelation(candidate) {
 function mapDocuments(candidate, STRAPI_BASE_URL) {
     const docs = Array.isArray(candidate?.documents) ? candidate.documents : [];
     return docs.map((d) => {
-        // expected: { name, remarks, file: media(single) }
-        const fileMedia = d?.file ?? d?.files ?? null; // fallback if schema differs
+        const fileMedia = d?.file ?? d?.files ?? null;
         const media = normalizeStrapiMedia(fileMedia, STRAPI_BASE_URL);
 
         return {
             name: d?.name || "",
             remarks: d?.remarks || "",
-            file: null, // frontend will set File if user replaces it
+            file: null,
             existingUrl: media.url || "",
             existingName: media.name || "",
             existingFileId: media.id || null,
@@ -82,13 +80,8 @@ function mapDocuments(candidate, STRAPI_BASE_URL) {
 /* ----------------------------- route ------------------------------ */
 
 export async function GET(req, { params }) {
-
-
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // e.g. http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
-
-
-
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
         return Response.json(
@@ -161,48 +154,41 @@ export async function GET(req, { params }) {
     }
 
     try {
-        const p = params ? await params : null;   // ✅ await Promise
+        const p = params ? await params : null;
         const documentId = p?.documentId;
 
         if (!documentId) {
-            return Response.json({ ok: false, error: "Missing documentId param" }, { status: 400 });
+            return Response.json(
+                { ok: false, error: "Missing documentId param" },
+                { status: 400 }
+            );
         }
-
 
         const query = qs.stringify(
             {
-                //status: "published",
                 populate: {
-
                     profileImage: true,
                     CV: true,
                     passport: true,
-                    workingVideo: true,
-                    miScreeningVideo: true,
-                    documents: true,
                     users_permissions_user: true,
                     job_roles: true,
                     documents: {
                         populate: {
                             file: true,
                         },
-
-
                     },
                 },
             },
             { encodeValuesOnly: true }
         );
-        // Then call:
-        // await strapiFetch(`candidates/${documentId}?${query}`, { method: "GET", useAuth: true });
 
         const parsed = await strapiFetch(`candidates/${documentId}?${query}`, {
             method: "GET",
             useAuth: true,
         });
-        console.log("Raw candidate data from Strapi:", parsed);
+
         const candidate = unwrapCandidate(parsed);
-        console.log("Unwrapped candidate data:", candidate);
+
         if (!candidate) {
             return Response.json(
                 { ok: false, error: "Candidate not found", parsed },
@@ -216,8 +202,6 @@ export async function GET(req, { params }) {
             profileImage: normalizeStrapiMedia(candidate?.profileImage, STRAPI_BASE_URL),
             CV: normalizeStrapiMedia(candidate?.CV, STRAPI_BASE_URL),
             passport: normalizeStrapiMedia(candidate?.passport, STRAPI_BASE_URL),
-            workingVideo: normalizeStrapiMedia(candidate?.workingVideo, STRAPI_BASE_URL),
-            miScreeningVideo: normalizeStrapiMedia(candidate?.miScreeningVideo, STRAPI_BASE_URL),
         };
 
         const formDefaults = {
@@ -265,14 +249,20 @@ export async function GET(req, { params }) {
             passport: null,
             passportExpireDate: candidate?.passportExpireDate || "",
 
-            workingVideo: null,
-            miScreeningVideo: null,
+            workingVideoLink: candidate?.workingVideoLink || "",
+            miScreeningVideoLink: candidate?.miScreeningVideoLink || "",
 
             documents: mapDocuments(candidate, STRAPI_BASE_URL),
         };
 
         return Response.json(
-            { ok: true, documentId, existingMedia, formDefaults, candidate: parsed },
+            {
+                ok: true,
+                documentId,
+                existingMedia,
+                formDefaults,
+                candidate: parsed,
+            },
             { status: 200 }
         );
     } catch (err) {

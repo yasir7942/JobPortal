@@ -39,9 +39,9 @@ function getFirstIncomingFile(incoming, keys) {
 /* ----------------------------- route ------------------------------ */
 
 export async function POST(req) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
-    const FORCE_ROLE_ID = process.env.STRAPI_CANDIDATE_ROLE_ID; // optional
+    const FORCE_ROLE_ID = process.env.STRAPI_CANDIDATE_ROLE_ID;
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
         return Response.json(
@@ -171,8 +171,6 @@ export async function POST(req) {
             englishLevelList: payload.englishLevelList || "",
             isProfileVerifiedList: payload.isProfileVerifiedList || "",
 
-
-
             passportExpireDate: payload.passportExpireDate || null,
             jobStatus: payload.jobStatus || "",
 
@@ -189,15 +187,17 @@ export async function POST(req) {
             // schema uses "Source" capital S
             Source: payload.Source ?? payload.source ?? "",
 
+            // NEW simple links
+            workingVideoLink: payload.workingVideoLink || "",
+            miScreeningVideoLink: payload.miScreeningVideoLink || "",
+
             users_permissions_user: userId,
             job_roles: jobRolesIds,
 
-            // we will update documents after uploading their files
             documents: Array.isArray(payload.documents) ? payload.documents : [],
         };
     }
 
-    // Upload file to Strapi media library (no linking)
     async function uploadStandaloneFile(file) {
         const form = new FormData();
         form.append("files", file, file.name);
@@ -210,14 +210,13 @@ export async function POST(req) {
 
         const first = Array.isArray(uploaded) ? uploaded[0] : null;
         if (!first?.id) throw new Error("Upload succeeded but no file id returned.");
-        return first; // {id, url, ...}
+        return first;
     }
 
     try {
         const incoming = await req.formData();
         console.log("Incoming keys:", [...new Set([...incoming.keys()])]);
 
-        /* ------------------------ parse JSON part ------------------------ */
         const dataStr = incoming.get("data");
         if (!dataStr) {
             return Response.json({ ok: false, error: "Missing data field" }, { status: 400 });
@@ -230,7 +229,6 @@ export async function POST(req) {
             return Response.json({ ok: false, error: "Invalid JSON in data field" }, { status: 400 });
         }
 
-        /* ---------------------- 1) register user ------------------------ */
         const username = (payload?.username || "").trim();
         const email = (payload?.email || "").trim();
         const password = String(payload?.password || "");
@@ -253,7 +251,6 @@ export async function POST(req) {
         const userId = registerRes?.user?.id;
         if (!userId) throw new Error("Register succeeded but user id not returned.");
 
-        // optional: update role/confirmed
         try {
             await strapiFetch(`users/${userId}`, {
                 method: "PUT",
@@ -264,7 +261,6 @@ export async function POST(req) {
             console.log("WARN: Could not update user confirmed/role:", e?.message);
         }
 
-        /* -------------------- 2) create candidate ------------------------ */
         const candidateData = buildCandidateData(payload, userId);
 
         let createdCandidate;
@@ -280,8 +276,8 @@ export async function POST(req) {
         }
 
         const created = createdCandidate?.data || createdCandidate;
-        const candidateId = created?.id; // numeric
-        const candidateDocumentId = created?.documentId; // string (v5)
+        const candidateId = created?.id;
+        const candidateDocumentId = created?.documentId;
 
         if (!candidateId || !candidateDocumentId) {
             return Response.json(
@@ -292,14 +288,10 @@ export async function POST(req) {
 
         console.log("Created candidate identifiers:", { candidateId, candidateDocumentId });
 
-        /* ---------------- 3) upload top media then PUT ------------------- */
-        // NOTE: you send "files.profileImage" etc. so we read those
         const topMediaMap = {
             profileImage: ["profileImage", "files.profileImage"],
             CV: ["CV", "files.CV", "files.cv"],
             passport: ["passport", "files.passport"],
-            workingVideo: ["workingVideo", "files.workingVideo"],
-            miScreeningVideo: ["miScreeningVideo", "files.miScreeningVideo"],
         };
 
         const uploads = { top: {}, documents: [] };
@@ -313,8 +305,6 @@ export async function POST(req) {
 
                 const up = await uploadStandaloneFile(f);
                 uploads.top[field] = up;
-
-                // single media fields attach by id
                 mediaUpdate[field] = up.id;
             }
 
@@ -331,9 +321,6 @@ export async function POST(req) {
             throw e;
         }
 
-        /* ----------- 4) documents[]: upload files + update component ------ */
-        // IMPORTANT: This assumes your component "documents.files" has:
-        // { name: string, remarks: text/string, file: media(single) }
         const docsMeta = Array.isArray(payload.documents) ? payload.documents : [];
 
         if (docsMeta.length > 0) {
@@ -358,7 +345,7 @@ export async function POST(req) {
                         docsUpdated.push({
                             name,
                             remarks,
-                            file: up.id, // <-- attach media id to component
+                            file: up.id,
                         });
                     } else {
                         docsUpdated.push({ name, remarks });
@@ -377,7 +364,6 @@ export async function POST(req) {
             }
         }
 
-        /* ---------------------- 5) return populate ----------------------- */
         const populated = await strapiFetch(
             `candidates/${candidateDocumentId}?status=published&populate=*`,
             { method: "GET", useAuth: true }

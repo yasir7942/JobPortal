@@ -112,7 +112,7 @@ function normalizeOfferLetterMedia(media) {
 }
 
 async function getCandidateIdByDocumentId(base, token, candidateDocumentId) {
-    const url = `${base}/api/candidates/${encodeURIComponent(candidateDocumentId)}?status=published`;
+    const url = `${base}/api/candidates/${candidateDocumentId}?status=published`;
 
     const res = await fetch(url, {
         headers: {
@@ -154,7 +154,7 @@ async function getJobAssignments(base, token, jobDocumentId) {
     };
 
     const query = qs.stringify(queryObj, { encodeValuesOnly: true });
-    const url = `${base}/api/jobs/${encodeURIComponent(jobDocumentId)}?${query}`;
+    const url = `${base}/api/jobs/${jobDocumentId}?${query}`;
 
     const res = await fetch(url, {
         headers: {
@@ -187,7 +187,7 @@ async function updateJobAssignments(base, token, jobDocumentId, assignments) {
         },
     };
 
-    const url = `${base}/api/jobs/${encodeURIComponent(jobDocumentId)}?status=published`;
+    const url = `${base}/api/jobs/${jobDocumentId}?status=published`;
 
     const res = await fetch(url, {
         method: "PUT",
@@ -238,6 +238,35 @@ async function uploadOfferLetterToStrapi(base, token, file) {
         name: uploaded.name || "",
         url: absoluteMediaUrl(uploaded.url || ""),
     };
+}
+
+async function updateCandidateJobStatus(base, token, candidateDocumentId, nextJobStatus) {
+    const payload = {
+        data: {
+            jobStatus: nextJobStatus,
+        },
+    };
+
+    const url = `${base}/api/candidates/${candidateDocumentId}?status=published`;
+
+    const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+
+    const json = await readBodySafe(res);
+
+    if (!res.ok || json?.error) {
+        console.error("CANDIDATE JOB STATUS PUT PAYLOAD", JSON.stringify(payload, null, 2));
+        console.error("CANDIDATE JOB STATUS PUT RESPONSE", json);
+        throw new Error(json?.error?.message || "Failed to update candidate jobStatus");
+    }
+
+    return json;
 }
 
 export async function GET(req) {
@@ -344,22 +373,16 @@ export async function POST(req) {
             candidateDocumentId = String(body?.candidateDocumentId || "").trim();
             action = String(body?.action || "").trim();
 
-            if (!jobDocumentId || !candidateDocumentId || !action) {
+            if (!jobDocumentId || !action) {
                 return Response.json(
                     {
                         ok: false,
-                        error: "jobDocumentId, candidateDocumentId and action are required",
+                        error: "jobDocumentId and action are required",
                     },
                     { status: 400 }
                 );
             }
         }
-
-        const candidateId = await getCandidateIdByDocumentId(
-            base,
-            token,
-            candidateDocumentId
-        );
 
         const rawRows = await getJobAssignments(base, token, jobDocumentId);
         const cleanRows = sanitizeAssignmentRows(rawRows);
@@ -371,13 +394,67 @@ export async function POST(req) {
             );
         }
 
+        if (action === "clearSuggestedCandidates") {
+            const updatedRows = cleanRows.filter(
+                (row) => String(row?.candidateProcessList || "") !== "Suggested Candidate"
+            );
+
+            await updateJobAssignments(base, token, jobDocumentId, updatedRows);
+
+            return Response.json({
+                ok: true,
+                action,
+            });
+        }
+
+        if (!candidateDocumentId) {
+            return Response.json(
+                {
+                    ok: false,
+                    error: "candidateDocumentId is required",
+                },
+                { status: 400 }
+            );
+        }
+
+        const candidateId = await getCandidateIdByDocumentId(base, token, candidateDocumentId);
+
+        if (action === "removeCandidate") {
+            const targetRow = cleanRows.find(
+                (row) => String(row?.candidate) === String(candidateId)
+            );
+
+            const wasHired =
+                String(targetRow?.candidateProcessList || "") === "Hired Candidate";
+
+            const updatedRows = cleanRows.filter(
+                (row) => String(row?.candidate) !== String(candidateId)
+            );
+
+            await updateJobAssignments(base, token, jobDocumentId, updatedRows);
+
+            if (wasHired) {
+                await updateCandidateJobStatus(base, token, candidateDocumentId, "Available");
+            }
+
+            return Response.json({
+                ok: true,
+                action,
+                candidateId,
+                candidateJobStatusUpdatedTo: wasHired ? "Available" : null,
+            });
+        }
+
         let found = false;
         let resultProcess = "";
         let resultOfferLetter = null;
+        let previousProcess = "";
+        let nextProcessForCandidate = "";
 
         const updatedRows = cleanRows.map((row) => {
             if (String(row.candidate) === String(candidateId)) {
                 found = true;
+                previousProcess = row.candidateProcessList || "";
 
                 if (action === "uploadOfferLetter") {
                     resultProcess = row.candidateProcessList || "Hired Candidate";
@@ -402,6 +479,7 @@ export async function POST(req) {
                 const nextProcess = toProcessString(action);
                 resultProcess = nextProcess;
                 resultOfferLetter = row.offerLetter || null;
+                nextProcessForCandidate = nextProcess;
 
                 return {
                     ...row,
@@ -424,11 +502,28 @@ export async function POST(req) {
 
         await updateJobAssignments(base, token, jobDocumentId, updatedRows);
 
+        if (nextProcessForCandidate === "Hired Candidate") {
+            await updateCandidateJobStatus(base, token, candidateDocumentId, "Hired");
+        } else if (
+            previousProcess === "Hired Candidate" &&
+            nextProcessForCandidate &&
+            nextProcessForCandidate !== "Hired Candidate"
+        ) {
+            await updateCandidateJobStatus(base, token, candidateDocumentId, "Available");
+        }
+
         return Response.json({
             ok: true,
             candidateId,
             candidateProcessList: resultProcess,
             offerLetter: resultOfferLetter,
+            candidateJobStatusUpdatedTo:
+                nextProcessForCandidate === "Hired Candidate"
+                    ? "Hired"
+                    : previousProcess === "Hired Candidate" &&
+                        nextProcessForCandidate !== "Hired Candidate"
+                        ? "Available"
+                        : null,
         });
     } catch (e) {
         return Response.json(

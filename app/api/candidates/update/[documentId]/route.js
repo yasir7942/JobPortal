@@ -37,7 +37,6 @@ function getFirstIncomingFile(incoming, keys) {
 }
 
 function pickDocFileId(doc) {
-    // handles: {file:{id}} or {file:{data:{id}}} or {files:...}
     const rel = doc?.file ?? doc?.files ?? null;
     return rel?.id ?? rel?.data?.id ?? null;
 }
@@ -45,7 +44,7 @@ function pickDocFileId(doc) {
 /* ----------------------------- route ------------------------------ */
 
 export async function POST(req, { params } = {}) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
@@ -81,7 +80,6 @@ export async function POST(req, { params } = {}) {
             cache: "no-store",
         });
 
-        // detect bad STRAPI_BASE_URL
         if (res.status >= 300 && res.status < 400) {
             const loc = res.headers.get("location");
             const err = new Error(`Strapi redirect detected (${res.status}). Fix STRAPI_BASE_URL. location=${loc}`);
@@ -110,7 +108,6 @@ export async function POST(req, { params } = {}) {
         return parsed;
     }
 
-    // Upload file to Strapi media library (no linking)
     async function uploadStandaloneFile(file) {
         const form = new FormData();
         form.append("files", file, file.name);
@@ -123,7 +120,7 @@ export async function POST(req, { params } = {}) {
 
         const first = Array.isArray(uploaded) ? uploaded[0] : null;
         if (!first?.id) throw new Error("Upload succeeded but no file id returned.");
-        return first; // {id, url, name, ...}
+        return first;
     }
 
     function buildCandidateUpdate(payload, userId) {
@@ -132,7 +129,6 @@ export async function POST(req, { params } = {}) {
             : [];
 
         return {
-            // keep referenceNumber if provided (your form has it disabled but still sent)
             ...(payload.referenceNumber ? { referenceNumber: payload.referenceNumber } : {}),
 
             fullName: payload.fullName || "",
@@ -164,17 +160,17 @@ export async function POST(req, { params } = {}) {
             currentlyEmployed: !!payload.currentlyEmployed,
             dateScreeningInterview: payload.dateScreeningInterview || null,
 
-            // schema uses "Source" capital S
             Source: payload.Source ?? payload.source ?? "",
 
-            // keep relation (safe)
+            workingVideoLink: payload.workingVideoLink || "",
+            miScreeningVideoLink: payload.miScreeningVideoLink || "",
+
             ...(userId ? { users_permissions_user: userId } : {}),
             job_roles: jobRolesIds,
         };
     }
 
     try {
-        // Next.js 15: params can be Promise
         const p = params ? await params : null;
         const documentId = p?.documentId || p?.documentid;
         if (!documentId) {
@@ -185,7 +181,9 @@ export async function POST(req, { params } = {}) {
         console.log("Incoming keys:", [...new Set([...incoming.keys()])]);
 
         const dataStr = incoming.get("data");
-        if (!dataStr) return Response.json({ ok: false, error: "Missing data field" }, { status: 400 });
+        if (!dataStr) {
+            return Response.json({ ok: false, error: "Missing data field" }, { status: 400 });
+        }
 
         let payload;
         try {
@@ -194,14 +192,15 @@ export async function POST(req, { params } = {}) {
             return Response.json({ ok: false, error: "Invalid JSON in data field" }, { status: 400 });
         }
 
-        /* ---------------- 0) fetch existing candidate (for userId + docs) ---------------- */
-        // NOTE: avoid nested populate to prevent Strapi v5 500
         const existing = await strapiFetch(
             `candidates/${documentId}?status=published&populate[users_permissions_user]=true&populate[documents]=true`,
             { method: "GET", useAuth: true }
         );
 
-        const existingRec = existing?.data?.attributes ? { ...existing.data.attributes, id: existing.data.id } : (existing?.data || existing);
+        const existingRec = existing?.data?.attributes
+            ? { ...existing.data.attributes, id: existing.data.id }
+            : (existing?.data || existing);
+
         const existingUserId =
             existingRec?.users_permissions_user?.data?.id ??
             existingRec?.users_permissions_user?.id ??
@@ -209,8 +208,6 @@ export async function POST(req, { params } = {}) {
 
         const existingDocs = Array.isArray(existingRec?.documents) ? existingRec.documents : [];
 
-        /* ---------------- 1) update linked user (optional) ---------------- */
-        // Only update if we have a userId
         if (existingUserId) {
             const userUpdate = {};
             const username = String(payload?.username || "").trim();
@@ -219,9 +216,8 @@ export async function POST(req, { params } = {}) {
 
             if (username) userUpdate.username = username;
             if (email) userUpdate.email = email;
-            if (password) userUpdate.password = password; // optional change
+            if (password) userUpdate.password = password;
 
-            // Only call if something to update
             if (Object.keys(userUpdate).length > 0) {
                 await strapiFetch(`users/${existingUserId}`, {
                     method: "PUT",
@@ -231,7 +227,6 @@ export async function POST(req, { params } = {}) {
             }
         }
 
-        /* ---------------- 2) update candidate fields (no media yet) ---------------- */
         const candidateUpdate = buildCandidateUpdate(payload, existingUserId);
 
         await strapiFetch(`candidates/${documentId}?status=published`, {
@@ -240,13 +235,10 @@ export async function POST(req, { params } = {}) {
             json: { data: candidateUpdate },
         });
 
-        /* ---------------- 3) upload top media then PUT ---------------- */
         const topMediaMap = {
             profileImage: ["profileImage", "files.profileImage"],
             CV: ["CV", "files.CV", "files.cv"],
             passport: ["passport", "files.passport"],
-            workingVideo: ["workingVideo", "files.workingVideo"],
-            miScreeningVideo: ["miScreeningVideo", "files.miScreeningVideo"],
         };
 
         const uploads = { top: {}, documents: [] };
@@ -269,10 +261,8 @@ export async function POST(req, { params } = {}) {
             });
         }
 
-        /* ---------------- 4) documents[]: upload files + update component ---------------- */
         const docsMeta = Array.isArray(payload?.documents) ? payload.documents : null;
 
-        // If client sends documents array (even empty), we respect it and overwrite component
         if (docsMeta) {
             const docsUpdated = [];
 
@@ -280,7 +270,6 @@ export async function POST(req, { params } = {}) {
                 const name = docsMeta[i]?.name || "";
                 const remarks = docsMeta[i]?.remarks || "";
 
-                // new uploaded doc file?
                 const docFile = getFirstIncomingFile(incoming, [
                     `files.documents.${i}.file`,
                     `files.documents[${i}].file`,
@@ -295,25 +284,21 @@ export async function POST(req, { params } = {}) {
                     uploads.documents.push({ index: i, fileId: up.id, filename: up.name });
                     fileId = up.id;
                 } else {
-                    // try to keep existing by ID (best)
                     fileId =
                         docsMeta[i]?.existingFileId ??
                         pickDocFileId(existingDocs[i]) ??
                         null;
                 }
 
-                // Skip totally empty rows
                 const any = String(name || "").trim() || String(remarks || "").trim() || fileId;
                 if (!any) continue;
 
-                // IMPORTANT: include file id when possible (component array overwrite)
                 const row = { name, remarks };
                 if (fileId) row.file = fileId;
 
                 docsUpdated.push(row);
             }
 
-            // overwrite documents array (including clearing if empty)
             await strapiFetch(`candidates/${documentId}?status=published`, {
                 method: "PUT",
                 useAuth: true,
@@ -321,9 +306,8 @@ export async function POST(req, { params } = {}) {
             });
         }
 
-        /* ---------------- 5) return safe populated result ---------------- */
         const populated = await strapiFetch(
-            `candidates/${documentId}?status=published&populate[profileImage]=true&populate[CV]=true&populate[passport]=true&populate[workingVideo]=true&populate[miScreeningVideo]=true&populate[job_roles]=true&populate[users_permissions_user]=true&populate[documents]=true`,
+            `candidates/${documentId}?status=published&populate[profileImage]=true&populate[CV]=true&populate[passport]=true&populate[job_roles]=true&populate[users_permissions_user]=true&populate[documents]=true`,
             { method: "GET", useAuth: true }
         );
 

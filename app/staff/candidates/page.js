@@ -28,6 +28,10 @@ function isPdfUrl(url) {
     return String(url).toLowerCase().includes(".pdf");
 }
 
+function isValidLink(url) {
+    return url;
+}
+
 async function fetchJsonSafe(url) {
     const res = await fetch(url, { cache: "no-store" });
     const text = await res.text();
@@ -111,21 +115,17 @@ export default function CandidatesPage() {
     const [loadingTable, setLoadingTable] = useState(true);
     const [tableError, setTableError] = useState("");
 
-    // Popup candidate (list row)
     const [selectedCandidate, setSelectedCandidate] = useState(null);
 
-    // Full details from getcandidate API
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState("");
     const [detail, setDetail] = useState(null);
 
-    // CV loading (pdf iframe)
     const [cvLoading, setCvLoading] = useState(false);
     const [cvFailed, setCvFailed] = useState(false);
     const cvLoadedRef = useRef(false);
     const cvTimeoutRef = useRef(null);
 
-    // Debounce search
     useEffect(() => {
         const t = setTimeout(() => setDebouncedQ(search.trim()), 350);
         return () => clearTimeout(t);
@@ -150,7 +150,6 @@ export default function CandidatesPage() {
         }
     }
 
-    // Load table data (server-side pagination)
     useEffect(() => {
         loadCandidates(page, debouncedQ);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +170,6 @@ export default function CandidatesPage() {
         }
     }
 
-    // ESC to close popup
     useEffect(() => {
         if (!selectedCandidate) return;
         const onKey = (e) => e.key === "Escape" && closeCandidate();
@@ -179,7 +177,6 @@ export default function CandidatesPage() {
         return () => window.removeEventListener("keydown", onKey);
     }, [selectedCandidate]);
 
-    // body scroll lock when popup open
     useEffect(() => {
         if (!selectedCandidate) return;
         const prev = document.body.style.overflow;
@@ -197,7 +194,6 @@ export default function CandidatesPage() {
             const json = await fetchJsonSafe(`/api/candidates/getcandidate/${c.documentId}`);
             setDetail(json);
 
-            // CV loader only for PDF iframe preview
             const cvUrl = json?.existingMedia?.CV?.url || "";
             if (isPdfUrl(cvUrl)) {
                 setCvLoading(true);
@@ -278,7 +274,6 @@ export default function CandidatesPage() {
                         </div>
                     </header>
 
-                    {/* ✅ TABLE */}
                     <div className="w-full overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 border-b border-gray-200">
@@ -299,19 +294,19 @@ export default function CandidatesPage() {
                             <tbody>
                                 {loadingTable ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
+                                        <td colSpan={10} className="px-3 py-6 text-sm text-gray-800">
                                             Loading candidates...
                                         </td>
                                     </tr>
                                 ) : tableError ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-red-700">
+                                        <td colSpan={10} className="px-3 py-6 text-sm text-red-700">
                                             {tableError}
                                         </td>
                                     </tr>
                                 ) : rows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
+                                        <td colSpan={10} className="px-3 py-6 text-sm text-gray-800">
                                             No candidates found.
                                         </td>
                                     </tr>
@@ -375,7 +370,6 @@ export default function CandidatesPage() {
                         </table>
                     </div>
 
-                    {/* pagination (server-side) */}
                     <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-white px-4 py-3">
                         <div className="text-sm text-gray-800">
                             Page {page} of {pageCount}
@@ -403,7 +397,6 @@ export default function CandidatesPage() {
                     </div>
                 </div>
 
-                {/* ✅ Candidate Popup (shows ALL fields from getcandidate) */}
                 {selectedCandidate && (
                     <div
                         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -484,7 +477,6 @@ export default function CandidatesPage() {
                                         </div>
                                     </div>
 
-                                    {/* Details */}
                                     <div className="mt-4 rounded-xl border border-gray-400 p-3 ">
                                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                             {[
@@ -500,18 +492,11 @@ export default function CandidatesPage() {
                                                 ["Marital Status", detail?.formDefaults?.maritalStatusList],
                                                 ["Seasonal Status", detail?.formDefaults?.seasonalStatusList],
                                                 ["English Level", detail?.formDefaults?.englishLevelList],
-
                                                 ["Previous Company", detail?.formDefaults?.previousCompany],
                                                 ["Previous Job Experience", `${detail?.formDefaults?.previousJobExperiece ?? 0}Y`],
-
                                                 ["Current Company", detail?.formDefaults?.currentCompany],
                                                 ["Current Job Experience", `${detail?.formDefaults?.currentJobExperiece ?? 0}Y`],
-
                                                 ["Passport Expiry", detail?.formDefaults?.passportExpireDate],
-
-
-
-
                                             ].map(([k, v]) => (
                                                 <div className="text-sm" key={k}>
                                                     <div className="text-gray-700 ">{k}</div>
@@ -532,7 +517,6 @@ export default function CandidatesPage() {
                                         </div>
                                     </div>
 
-                                    {/* Passport + Videos */}
                                     <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
                                         <div className="rounded-xl border border-gray-400 p-3">
                                             <div className="flex items-center justify-between gap-2">
@@ -556,8 +540,13 @@ export default function CandidatesPage() {
                                         <div className="rounded-xl border border-gray-400 p-3">
                                             <div className="text-sm text-gray-800">Working Video</div>
                                             <div className="mt-2">
-                                                {detail?.existingMedia?.workingVideo?.url ? (
-                                                    <a className="text-sm text-blue-600 hover:underline" href={detail.existingMedia.workingVideo.url} target="_blank" rel="noreferrer">
+                                                {isValidLink(detail?.formDefaults?.workingVideoLink) ? (
+                                                    <a
+                                                        className="text-sm text-blue-600 hover:underline"
+                                                        href={detail.formDefaults.workingVideoLink}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                    >
                                                         Open Video
                                                     </a>
                                                 ) : (
@@ -569,10 +558,10 @@ export default function CandidatesPage() {
                                         <div className="rounded-xl border border-gray-400 p-3">
                                             <div className="text-sm text-gray-800">MI Screening Video</div>
                                             <div className="mt-2">
-                                                {detail?.existingMedia?.miScreeningVideo?.url ? (
+                                                {isValidLink(detail?.formDefaults?.miScreeningVideoLink) ? (
                                                     <a
                                                         className="text-sm text-blue-600 hover:underline"
-                                                        href={detail.existingMedia.miScreeningVideo.url}
+                                                        href={detail.formDefaults.miScreeningVideoLink}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                     >
@@ -581,13 +570,11 @@ export default function CandidatesPage() {
                                                 ) : (
                                                     <div className="text-xs text-gray-500">None</div>
                                                 )}
-
                                             </div>
                                             <div className="text-xs text-gray-800 mt-2">Screening Date: {detail?.formDefaults?.dateScreeningInterview || "—"}</div>
                                         </div>
                                     </div>
 
-                                    {/* Documents */}
                                     <div className="mt-4 rounded-xl border border-gray-400 p-3">
                                         <div className="text-sm text-gray-800">Documents ({detail?.formDefaults?.documents?.length || 0})</div>
 
@@ -624,7 +611,6 @@ export default function CandidatesPage() {
                                         </div>
                                     </div>
 
-                                    {/* CV Viewer */}
                                     <div className="mt-4">
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="text-sm text-gray-800">CV Preview </div>

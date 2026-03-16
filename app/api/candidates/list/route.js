@@ -26,7 +26,6 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
     const name = attrs?.name ?? "";
     const id = m?.id ?? null;
 
-    // STRAPI_BASE_URL = http://127.0.0.1:1337/api
     const origin = String(STRAPI_BASE_URL || "").replace(/\/api\/?$/, "");
     const absUrl = url ? (url.startsWith("http") ? url : joinUrl(origin, url)) : "";
 
@@ -34,8 +33,6 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
 }
 
 function unwrapCollectionItem(item) {
-    // Strapi v4: {id, attributes:{...}}
-    // Strapi v5 often: {id, documentId, ...} or also {attributes}
     if (!item) return null;
     if (item.attributes) return { id: item.id, documentId: item.documentId ?? item.attributes?.documentId, ...item.attributes };
     return item;
@@ -69,7 +66,7 @@ function getJobRoleTitles(candidate) {
 /* ----------------------------- route ------------------------------ */
 
 export async function GET(req) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // e.g. http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
@@ -158,9 +155,6 @@ export async function GET(req) {
                 profileImage: true,
                 CV: true,
                 passport: true,
-                workingVideo: true,
-                miScreeningVideo: true,
-                documents: true,
                 users_permissions_user: true,
                 job_roles: true,
                 documents: {
@@ -181,6 +175,8 @@ export async function GET(req) {
                     { mobile: { $containsi: q } },
                     { nationalityList: { $containsi: q } },
                     { jobStatus: { $containsi: q } },
+                    { workingVideoLink: { $containsi: q } },
+                    { miScreeningVideoLink: { $containsi: q } },
                     { Source: { $containsi: q } },
                     { users_permissions_user: { username: { $containsi: q } } },
                     { users_permissions_user: { email: { $containsi: q } } },
@@ -218,8 +214,10 @@ export async function GET(req) {
                 jobStatus: c?.jobStatus || "",
                 isProfileVerifiedList: c?.isProfileVerifiedList || "",
                 source: c?.Source ?? c?.source ?? "",
+                workingVideoLink: c?.workingVideoLink || "",
+                miScreeningVideoLink: c?.miScreeningVideoLink || "",
                 profileImageUrl: profile.url || "",
-                job_roles: roles, // titles
+                job_roles: roles,
             };
         });
 

@@ -51,8 +51,6 @@ function pickCandidate(candidate, STRAPI_BASE_URL) {
         })
         : [];
 
-    console.log("Candidate iframe:", cd.workingVideoIframe, cd.miScreeningVideoIframe);
-
     return {
         documentId,
         referenceNumber: cd?.referenceNumber || "",
@@ -76,8 +74,8 @@ function pickCandidate(candidate, STRAPI_BASE_URL) {
         englishLevelList: cd?.englishLevelList || "",
         shortSummary: cd?.shortSummary || "",
         privateNotes: cd?.privateNotes || "",
-        workingVideoIframe: cd?.workingVideoIframe || "",
-        miScreeningVideoIframe: cd?.miScreeningVideoIframe || "",
+        workingVideoLink: cd?.workingVideoLink || "",
+        miScreeningVideoLink: cd?.miScreeningVideoLink || "",
         currentlyEmployed: cd?.currentlyEmployed || null,
         avatar: profileImage?.url || "https://placehold.net/avatar.svg",
         cvUrl: cv?.url || "",

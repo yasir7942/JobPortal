@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
+
 import qs from "qs";
 
-// same helper style you already use in routes :contentReference[oaicite:5]{index=5}
 function joinUrl(base, path) {
     const b = String(base || "").replace(/\/+$/, "");
     const p = String(path || "").replace(/^\/+/, "");
@@ -17,23 +17,57 @@ async function readBodySafe(res) {
     }
 }
 
-function unwrapCollectionItem(item) {
-    if (!item) return null;
-    if (item.attributes) {
-        return { id: item.id, documentId: item.documentId ?? item.attributes?.documentId, ...item.attributes };
-    }
-    return item;
+function normalizeStrapiJob(job) {
+    const j = job?.attributes
+        ? {
+            id: job.id,
+            documentId: job.documentId ?? job.attributes?.documentId,
+            ...job.attributes,
+        }
+        : job || {};
+
+    return {
+        id: j?.id ?? null,
+        documentId: j?.documentId || "",
+        companyName: j?.client?.companyName || "",
+        title: j?.title || "",
+        details: j?.details || [],
+        referenceNo: j?.referenceNo || "",
+        closingDate: j?.closingDate || "",
+        location: j?.location || "",
+        industeryList: j?.industeryList || "",
+        jobType: j?.jobType || "",
+        salary: j?.salary || "",
+        statusList: j?.statusList || "",
+        jobTypeList: j?.jobTypeList || "",
+        vacanciesNo: j?.vacanciesNo || "",
+        experience: j?.experience || "",
+        shortDescription: j?.shortDescription || "",
+        showToCandidateList: j?.showToCandidateList || "",
+        createdAt: j?.createdAt || "",
+        updatedAt: j?.updatedAt || "",
+        publishedAt: j?.publishedAt || "",
+    };
 }
 
 export async function GET(req) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // e.g. http://127.0.0.1:1337/api
-    const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
+    const RAW_TOKEN = String(
+        process.env.STRAPI_TOKEN ||
+        process.env.STRAPI_API_TOKEN ||
+        ""
+    ).trim();
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
-        return Response.json({ ok: false, error: "Missing STRAPI_BASE_URL or STRAPI_TOKEN" }, { status: 500 });
+        return Response.json(
+            { ok: false, error: "Missing STRAPI_BASE_URL or STRAPI_TOKEN" },
+            { status: 500 }
+        );
     }
 
-    const BEARER = RAW_TOKEN.toLowerCase().startsWith("bearer ") ? RAW_TOKEN : `Bearer ${RAW_TOKEN}`;
+    const BEARER = RAW_TOKEN.toLowerCase().startsWith("bearer ")
+        ? RAW_TOKEN
+        : `Bearer ${RAW_TOKEN}`;
 
     async function strapiFetch(path, opts = {}) {
         const url = joinUrl(STRAPI_BASE_URL, path);
@@ -50,13 +84,19 @@ export async function GET(req) {
             body = JSON.stringify(opts.json);
         }
 
-        const res = await fetch(url, { method, headers, body, redirect: "manual", cache: "no-store" });
-
-
+        const res = await fetch(url, {
+            method,
+            headers,
+            body,
+            redirect: "manual",
+            cache: "no-store",
+        });
 
         if (res.status >= 300 && res.status < 400) {
             const loc = res.headers.get("location");
-            const err = new Error(`Strapi redirect detected (${res.status}). Fix STRAPI_BASE_URL. location=${loc}`);
+            const err = new Error(
+                `Strapi redirect detected (${res.status}). Fix STRAPI_BASE_URL. location=${loc}`
+            );
             err.status = 500;
             throw err;
         }
@@ -64,7 +104,10 @@ export async function GET(req) {
         const parsed = await readBodySafe(res);
 
         if (!res.ok) {
-            const msg = parsed?.error?.message || parsed?.message || `Strapi error: ${res.status}`;
+            const msg =
+                parsed?.error?.message ||
+                parsed?.message ||
+                `Strapi error: ${res.status}`;
             const err = new Error(msg);
             err.details = parsed?.error || parsed;
             err.status = res.status;
@@ -77,81 +120,114 @@ export async function GET(req) {
     try {
         const url = new URL(req.url);
 
-        const clientDocumentId = String(url.searchParams.get("clientDocumentId") || "").trim();
-        const includeClosed = String(url.searchParams.get("includeClosed") || "0") === "1";
+        const clientDocumentId = String(
+            url.searchParams.get("clientDocumentId") || ""
+        ).trim();
+
+        const includeClosed =
+            String(url.searchParams.get("includeClosed") || "0") === "1";
 
         const page = Math.max(1, Number(url.searchParams.get("page") || 1));
         const pageSizeRaw = Number(url.searchParams.get("pageSize") || 10);
-        const pageSize = Math.min(50, Math.max(1, pageSizeRaw));
+        const pageSize = Math.min(100, Math.max(1, pageSizeRaw));
 
         if (!clientDocumentId) {
-            return Response.json({ ok: false, error: "Missing clientDocumentId" }, { status: 400 });
+            return Response.json(
+                { ok: false, error: "Missing clientDocumentId" },
+                { status: 400 }
+            );
         }
 
-        // IMPORTANT:
-        // This assumes your Job has a relation field named "client" (job belongsTo client)
-        // and your job status field is "statusList".
-        const filters = includeClosed
-            ? { client: { documentId: { $eq: clientDocumentId } } }
-            : { client: { documentId: { $eq: clientDocumentId } }, statusList: { $eq: "open" } };
-
+        // Get client by documentId, then populate jobs
         const queryObj = {
             status: "published",
-            sort: ["createdAt:desc"],
-            pagination: { page, pageSize },
-            filters,
+            filters: {
+                documentId: {
+                    $eq: clientDocumentId,
+                },
+            },
             populate: {
-                client: true,
+                jobs: {
+                    sort: ["createdAt:desc"],
+                    populate: {
+                        client: {
+                            fields: ["companyName", "documentId"],
+                        },
+                    },
+                },
             },
         };
 
         const query = qs.stringify(queryObj, { encodeValuesOnly: true });
-        const parsed = await strapiFetch(`jobs?${query}`, { method: "GET" });
 
-        const pagination = parsed?.meta?.pagination || {};
-        const data = Array.isArray(parsed?.data) ? parsed.data : [];
+        const parsed = await strapiFetch(`clients?${query}`, { method: "GET" });
 
-        const items = data.map((it) => {
-            const j = unwrapCollectionItem(it) || {};
-            const documentId = j?.documentId || it?.documentId || j?.id || it?.id;
-            //  console.log("Parsed Job", { documentId, j, it });
+        const clients = Array.isArray(parsed?.data) ? parsed.data : [];
+        const clientRow = clients[0];
+
+        if (!clientRow) {
+            return Response.json(
+                { ok: false, error: "Client not found" },
+                { status: 404 }
+            );
+        }
+
+        const client =
+            clientRow?.attributes
+                ? {
+                    id: clientRow.id,
+                    documentId: clientRow.documentId ?? clientRow.attributes?.documentId,
+                    ...clientRow.attributes,
+                }
+                : clientRow;
+
+        const jobsRaw = Array.isArray(client?.jobs) ? client.jobs : [];
+
+        let jobs = jobsRaw.map((job) => {
+            const normalized = normalizeStrapiJob(job);
             return {
-                id: j?.id ?? it?.id ?? null,
-                documentId: documentId ? String(documentId) : "",
-                companyName: j?.client.companyName || "",
-                title: j?.title || "",
-                details: j?.details || [],
-                referenceNo: j?.referenceNo || "",
-                closingDate: j?.closingDate || "",
-                location: j?.location || "",
-                industeryList: j?.industeryList || "",
-                jobType: j?.jobType || "",
-                salary: j?.salary || "",
-                statusList: j?.statusList || "",
-                jobTypeList: j?.jobTypeList || "",
-                jobTypeList: j?.jobTypeList || "",
-                vacanciesNo: j?.vacanciesNo || "",
-                experience: j?.experience || "",
-                shortDescription: j?.shortDescription || "",
-                showToCandidateList: j?.showToCandidateList || "",
-                createdAt: j?.createdAt || "",
+                ...normalized,
+                companyName: client?.companyName || normalized.companyName || "",
             };
         });
+
+        if (!includeClosed) {
+            jobs = jobs.filter(
+                (job) => String(job?.statusList || "").trim().toLowerCase() === "open"
+            );
+        }
+
+        const total = jobs.length;
+        const pageCount = Math.max(1, Math.ceil(total / pageSize));
+        const safePage = Math.min(page, pageCount);
+        const start = (safePage - 1) * pageSize;
+        const end = start + pageSize;
+
+        const items = jobs.slice(start, end);
 
         return Response.json(
             {
                 ok: true,
-                page: pagination.page ?? page,
-                pageSize: pagination.pageSize ?? pageSize,
-                pageCount: pagination.pageCount ?? 1,
-                total: pagination.total ?? items.length,
+                client: {
+                    id: client?.id ?? null,
+                    documentId: client?.documentId || "",
+                    companyName: client?.companyName || "",
+                },
+                page: safePage,
+                pageSize,
+                pageCount,
+                total,
                 items,
             },
             { status: 200 }
         );
     } catch (err) {
         return Response.json(
-            { ok: false, error: err?.message || "Server error", details: err?.details || null },
+            {
+                ok: false,
+                error: err?.message || "Server error",
+                details: err?.details || null,
+            },
             { status: err?.status || 500 }
         );
     }

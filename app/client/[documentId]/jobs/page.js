@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Header from "@/app/components/layouts/client/Header";
+import { useRouter } from "next/navigation";
 
 // same UI components you use in Candidate form (theme)
 import { Field, Input, Textarea, Select, fetchJsonSafe } from "@/app/staff/ui/CandidateFormUI";
@@ -120,9 +121,7 @@ export default function ClientJobsPage() {
         setErr("");
 
         try {
-            const url = `/api/jobs/list?clientDocumentId=${encodeURIComponent(
-                clientDocumentId
-            )}&page=${nextPage}&pageSize=${pageSize}&includeClosed=${includeClosed ? "1" : "0"}`;
+            const url = `/api/jobs/list?clientDocumentId=${clientDocumentId}&page=${nextPage}&pageSize=${pageSize}&includeClosed=${includeClosed ? "1" : "0"}`;
 
             const json = await fetchJsonSafe(url);
 
@@ -207,7 +206,7 @@ export default function ClientJobsPage() {
 
 
 
-            const json = await fetchJsonSafe(`/api/jobs/get/${encodeURIComponent(docId)}`);
+            const json = await fetchJsonSafe(`/api/jobs/get/${docId}`);
             const fresh = json?.item || job;
 
 
@@ -341,8 +340,12 @@ export default function ClientJobsPage() {
         }
     }
 
-    async function closeJob(jobDocumentId) {
-        // (keep your existing close logic if you have it)
+    const router = useRouter();
+
+    async function OpenJobBoard(jobDocumentId) {
+        if (!jobDocumentId) return;
+
+        router.push(`/jobs/${jobDocumentId}`);
     }
 
     const headerText = useMemo(() => {
@@ -483,7 +486,7 @@ export default function ClientJobsPage() {
                                             </button>
 
                                             <button
-                                                onClick={() => closeJob(j.documentId)}
+                                                onClick={() => OpenJobBoard(j.documentId)}
                                                 disabled={String(j.statusList || "").toLowerCase() === "closed"}
                                                 className="w-full sm:w-auto rounded-md bg-red-700 text-white px-5 py-2 text-sm hover:opacity-90 disabled:opacity-40"
                                             >

@@ -11,7 +11,6 @@ import DocumentsFieldArray from "@/app/staff/ui/DocumentsFieldArray";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useDropzone } from "react-dropzone";
 import { getAllJobRoles } from "@/app/data/Loader";
 import {
     Field,
@@ -21,7 +20,6 @@ import {
     DropzoneBox,
     MultiSelectSearchIds,
     PasswordInput,
-    InfoTip,
     fetchJsonSafe,
     normalizePhone,
     fileExtOk,
@@ -29,7 +27,19 @@ import {
     normalizeIdArray
 } from "@/app/staff/ui/CandidateFormUI";
 
-
+/* ------------------------------------------------------------------ */
+/* Helpers */
+/* ------------------------------------------------------------------ */
+function isValidUrlOptional(v) {
+    const s = String(v || "").trim();
+    if (!s) return true;
+    try {
+        const u = new URL(s);
+        return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* Schema (EDIT) */
@@ -79,8 +89,8 @@ const CandidateEditSchema = z
         passport: z.any().optional(),
         passportExpireDate: z.string().optional(),
 
-        workingVideo: z.any().optional(),
-        miScreeningVideo: z.any().optional(),
+        workingVideoLink: z.string().optional(),
+        miScreeningVideoLink: z.string().optional(),
 
         documents: z
             .array(
@@ -88,8 +98,8 @@ const CandidateEditSchema = z
                     name: z.string().optional(),
                     remarks: z.string().max(200, "Max 200 characters").optional(),
                     file: z.any().optional(),
-                    existingUrl: z.string().optional(), // IMPORTANT for edit
-                    existingFileId: z.coerce.number().nullable().optional(), // ✅ keep existing media id
+                    existingUrl: z.string().optional(),
+                    existingFileId: z.coerce.number().nullable().optional(),
                 })
             )
             .default([]),
@@ -113,7 +123,6 @@ const CandidateEditSchema = z
             }
         }
 
-        // password optional
         const p = String(val.password || "").trim();
         const rp = String(val.retypePassword || "").trim();
         if (p || rp) {
@@ -128,40 +137,40 @@ const CandidateEditSchema = z
             }
         }
 
-        // profileImage ext (if selected)
         if (val.profileImage && val.profileImage instanceof File) {
             if (!fileExtOk(val.profileImage, [".jpg", ".jpeg", ".png", ".webp"])) {
                 ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileImage"], message: "Profile image must be jpg/png/webp" });
             }
         }
 
-        // CV ext (if selected)
         if (val.CV && val.CV instanceof File) {
             if (!fileExtOk(val.CV, [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".doc", ".docx"])) {
                 ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["CV"], message: "CV must be pdf/jpg/png/webp/doc/docx" });
             }
         }
 
-        // passport ext (if selected)
         if (val.passport && val.passport instanceof File) {
             if (!fileExtOk(val.passport, [".pdf", ".jpg", ".jpeg", ".png", ".webp"])) {
                 ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["passport"], message: "Passport must be pdf/jpg/png/webp" });
             }
         }
 
-        // videos ext (if selected)
-        if (val.workingVideo && val.workingVideo instanceof File) {
-            if (!fileExtOk(val.workingVideo, [".mp4", ".mov", ".webm", ".mkv"])) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["workingVideo"], message: "Video must be mp4/mov/webm/mkv" });
-            }
-        }
-        if (val.miScreeningVideo && val.miScreeningVideo instanceof File) {
-            if (!fileExtOk(val.miScreeningVideo, [".mp4", ".mov", ".webm", ".mkv"])) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["miScreeningVideo"], message: "Video must be mp4/mov/webm/mkv" });
-            }
+        if (!isValidUrlOptional(val.workingVideoLink)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["workingVideoLink"],
+                message: "Working video link must be a valid http/https URL",
+            });
         }
 
-        // documents: allow existingUrl OR new File
+        if (!isValidUrlOptional(val.miScreeningVideoLink)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["miScreeningVideoLink"],
+                message: "MI screening video link must be a valid http/https URL",
+            });
+        }
+
         (val.documents || []).forEach((d, i) => {
             const any =
                 (d?.name || "").trim() ||
@@ -211,8 +220,6 @@ export default function EditCandidatePage() {
         profileImage: { url: "", name: "" },
         CV: { url: "", name: "" },
         passport: { url: "", name: "" },
-        workingVideo: { url: "", name: "" },
-        miScreeningVideo: { url: "", name: "" },
     });
 
     useEffect(() => {
@@ -279,14 +286,13 @@ export default function EditCandidatePage() {
             passport: null,
             passportExpireDate: "",
 
-            workingVideo: null,
-            miScreeningVideo: null,
+            workingVideoLink: "",
+            miScreeningVideoLink: "",
 
             documents: [],
         },
     });
 
-    // fetch candidate -> reset form
     useEffect(() => {
         if (!documentId) return;
 
@@ -312,8 +318,6 @@ export default function EditCandidatePage() {
     const profileImage = watch("profileImage");
     const CV = watch("CV");
     const passport = watch("passport");
-    const workingVideo = watch("workingVideo");
-    const miScreeningVideo = watch("miScreeningVideo");
 
     const profilePreview = useMemo(() => {
         if (profileImage && profileImage instanceof File) return URL.createObjectURL(profileImage);
@@ -329,15 +333,13 @@ export default function EditCandidatePage() {
     const onSubmit = async (formData) => {
         setSubmitMsg("");
         if (formData.mobile) formData.mobile = normalizePhone(formData.mobile);
+
         try {
-            // same style as create: JSON without File objects
             const payloadData = {
                 ...formData,
                 profileImage: undefined,
                 CV: undefined,
                 passport: undefined,
-                workingVideo: undefined,
-                miScreeningVideo: undefined,
                 documents: (formData.documents || []).map((d) => ({
                     name: d?.name || "",
                     remarks: d?.remarks || "",
@@ -349,18 +351,14 @@ export default function EditCandidatePage() {
             const fd = new FormData();
             fd.append("data", JSON.stringify(payloadData));
 
-            // only send new files if user selected
             if (formData.profileImage instanceof File) fd.append("files.profileImage", formData.profileImage);
             if (formData.CV instanceof File) fd.append("files.CV", formData.CV);
             if (formData.passport instanceof File) fd.append("files.passport", formData.passport);
-            if (formData.workingVideo instanceof File) fd.append("files.workingVideo", formData.workingVideo);
-            if (formData.miScreeningVideo instanceof File) fd.append("files.miScreeningVideo", formData.miScreeningVideo);
 
             (formData.documents || []).forEach((doc, idx) => {
                 if (doc?.file instanceof File) fd.append(`files.documents.${idx}.file`, doc.file);
             });
 
-            // ✅ 3) Call  server route (token is on server)
             const res = await fetch(`/api/candidates/update/${documentId}`, {
                 method: "POST",
                 body: fd,
@@ -372,7 +370,7 @@ export default function EditCandidatePage() {
                 throw new Error(json?.error || "Candidate not saved");
             }
 
-            console.log("EDIT READY (not saving yet)", { documentId, payloadData });
+            console.log("EDIT READY", { documentId, payloadData });
             setSubmitMsg("Candidate updated ✅");
         } catch (e) {
             console.error("Add Candidate Error:", e);
@@ -413,7 +411,6 @@ export default function EditCandidatePage() {
                     </header>
 
                     <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-6">
-                        {/* ------------------ TOP: Identity + Contact ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Identity & Contact</div>
                             <div className="text-sm text-gray-800 mt-1">Edit basic information.</div>
@@ -428,7 +425,6 @@ export default function EditCandidatePage() {
                                 </Field>
                             </div>
 
-                            {/* Profile Image */}
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
@@ -506,7 +502,6 @@ export default function EditCandidatePage() {
                             </div>
                         </div>
 
-                        {/* ------------------ JOB / STATUS ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Job & Status</div>
                             <div className="text-sm text-gray-800 mt-1">Most-used screening fields for shortlisting.</div>
@@ -630,7 +625,6 @@ export default function EditCandidatePage() {
                             </div>
                         </div>
 
-                        {/* ------------------ EXPERIENCE ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Experience Details</div>
                             <div className="text-sm text-gray-800 mt-1">Useful for recruiters and screening.</div>
@@ -666,7 +660,6 @@ export default function EditCandidatePage() {
                             </div>
                         </div>
 
-                        {/* ------------------ DOCUMENTS & MEDIA ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Documents & Media</div>
                             <div className="text-sm text-gray-800 mt-1">Upload/replace media files.</div>
@@ -691,6 +684,7 @@ export default function EditCandidatePage() {
                                                 <a
                                                     href={existingMedia.CV.url}
                                                     target="_blank"
+                                                    rel="noreferrer"
                                                     className="mt-2 inline-block text-xs text-red-700 hover:underline"
                                                 >
                                                     View current CV ({existingMedia.CV.name || "file"})
@@ -719,6 +713,7 @@ export default function EditCandidatePage() {
                                                 <a
                                                     href={existingMedia.passport.url}
                                                     target="_blank"
+                                                    rel="noreferrer"
                                                     className="mt-2 inline-block text-xs text-red-700 hover:underline"
                                                 >
                                                     View current Passport ({existingMedia.passport.name || "file"})
@@ -736,81 +731,47 @@ export default function EditCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <Controller
-                                    control={control}
-                                    name="workingVideo"
-                                    render={({ field }) => (
-                                        <div>
-                                            <DropzoneBox
-                                                label="Working Video"
-                                                info="Upload single working video (mp4/mov/webm/mkv)."
-                                                hint="Optional"
-                                                acceptText="Accepted: .mp4, .mov, .webm, .mkv"
-                                                multiple={false}
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                                error={errors.workingVideo?.message}
-                                            />
-                                            {existingMedia?.workingVideo?.url && !(workingVideo instanceof File) ? (
-                                                <a
-                                                    href={existingMedia.workingVideo.url}
-                                                    target="_blank"
-                                                    className="mt-2 inline-block text-xs text-red-700 hover:underline"
-                                                >
-                                                    View current Working Video ({existingMedia.workingVideo.name || "file"})
-                                                </a>
-                                            ) : null}
-                                        </div>
-                                    )}
-                                />
+                                <Field
+                                    label="Working Video Link"
+                                    info="Paste video URL. It will open in new tab."
+                                    error={errors.workingVideoLink?.message}
+                                >
+                                    <Input
+                                        {...register("workingVideoLink")}
+                                        placeholder="https://..."
+                                        type="url"
+                                    />
+                                </Field>
                             </div>
 
-                            {/* Repeatable documents component */}
                             <div className="mt-4">
                                 <DocumentsFieldArray control={control} register={register} errors={errors} name="documents" />
                             </div>
                         </div>
 
-                        {/* ------------------ SCREENING ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Screening</div>
-                            <div className="text-sm text-gray-800 mt-1">Interview date and video</div>
+                            <div className="text-sm text-gray-800 mt-1">Interview date and video link</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field label="Screening Interview Date" info="Optional." error={errors.dateScreeningInterview?.message}>
                                     <Input {...register("dateScreeningInterview")} type="date" />
                                 </Field>
 
-                                <Controller
-                                    control={control}
-                                    name="miScreeningVideo"
-                                    render={({ field }) => (
-                                        <div>
-                                            <DropzoneBox
-                                                label="MI Screening Video"
-                                                info="Screening interview recording."
-                                                acceptText="Accepted: .mp4, .mov, .webm, .mkv"
-                                                multiple={false}
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                                error={errors.miScreeningVideo?.message}
-                                            />
-                                            {existingMedia?.miScreeningVideo?.url && !(miScreeningVideo instanceof File) ? (
-                                                <a
-                                                    href={existingMedia.miScreeningVideo.url}
-                                                    target="_blank"
-                                                    className="mt-2 inline-block text-xs text-red-700 hover:underline"
-                                                >
-                                                    View current Screening Video ({existingMedia.miScreeningVideo.name || "file"})
-                                                </a>
-                                            ) : null}
-                                        </div>
-                                    )}
-                                />
+                                <Field
+                                    label="MI Screening Video Link"
+                                    info="Paste screening video URL. It will open in new tab."
+                                    error={errors.miScreeningVideoLink?.message}
+                                >
+                                    <Input
+                                        {...register("miScreeningVideoLink")}
+                                        placeholder="https://..."
+                                        type="url"
+                                    />
+                                </Field>
                             </div>
                         </div>
 
-                        {/* ------------------ ACCOUNT ------------------ */}
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Account</div>
                             <div className="text-sm text-gray-800 mt-1">Candidate login credentials.</div>
@@ -831,7 +792,13 @@ export default function EditCandidatePage() {
                                         control={control}
                                         name="password"
                                         render={({ field }) => (
-                                            <PasswordInput value={field.value} onChange={field.onChange} autoComplete="new-password" placeholder="If password change required" error={errors.password?.message} />
+                                            <PasswordInput
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                autoComplete="new-password"
+                                                placeholder="If password change required"
+                                                error={errors.password?.message}
+                                            />
                                         )}
                                     />
                                 </Field>
@@ -841,14 +808,18 @@ export default function EditCandidatePage() {
                                         control={control}
                                         name="retypePassword"
                                         render={({ field }) => (
-                                            <PasswordInput value={field.value} onChange={field.onChange} placeholder="Retype second time" error={errors.retypePassword?.message} />
+                                            <PasswordInput
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                placeholder="Retype second time"
+                                                error={errors.retypePassword?.message}
+                                            />
                                         )}
                                     />
                                 </Field>
                             </div>
                         </div>
 
-                        {/* ------------------ ACTIONS ------------------ */}
                         <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
                             <Link
                                 href="/staff/candidates"

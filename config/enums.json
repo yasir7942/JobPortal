@@ -2,7 +2,7 @@
   "genders": ["Male", "Female", "Undisclosed"],
   "maritalStatus": ["Single", "Married", "Divorced", "Widowed"],
   "englishLevel": ["Average", "Basic", "Below Basic", "Excellent"],
-  "jobStatus": ["Open", "Working", "On Hold", "Close"],
+  "jobStatus": ["Available", "Working", "On Hold", "Close", "Hired"],
    "jobType": ["Permanent", "Contract", "Seasonal", "Temporary", "Part Time"],
    "showToCandidate":["Only Job Title","Complete Job","Job and Company"],
   "isProfileVerified": ["Documents Pending", "Verified", "On Hold", "Blacklisted"],

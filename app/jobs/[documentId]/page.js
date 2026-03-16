@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import Header from "@/app/components/layouts/client/Header";
 import ENUMS from "@/config/enums.json";
+import { IoClose } from "react-icons/io5";
 
 const DUMMY_PDF = "";
 
@@ -102,27 +103,9 @@ function formatDate(value) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function hasIframeHtml(value) {
-    const raw = String(value || "").trim().toLowerCase();
-    return raw.includes("<iframe");
-}
-
-function extractIframeData(value) {
+function isValidLink(value) {
     const raw = String(value || "").trim();
-    if (!raw) return { src: "", title: "Video Player" };
-
-    const srcMatch =
-        raw.match(/src\s*=\s*"([^"]+)"/i) ||
-        raw.match(/src\s*=\s*'([^']+)'/i);
-
-    const titleMatch =
-        raw.match(/title\s*=\s*"([^"]+)"/i) ||
-        raw.match(/title\s*=\s*'([^']+)'/i);
-
-    return {
-        src: srcMatch?.[1] || "",
-        title: titleMatch?.[1] || "Video Player",
-    };
+    return /^https?:\/\//i.test(raw);
 }
 
 function withProcess(items, processKey) {
@@ -159,147 +142,6 @@ function removeCandidateFromList(list, candidateDocumentId) {
 function upsertCandidateAtTop(list, candidate) {
     const next = removeCandidateFromList(list, candidate?.documentId);
     return [candidate, ...next];
-}
-
-function VideoViewerModal({ open, title, iframeHtmlFromDb, onClose }) {
-    const [mounted, setMounted] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [loadFailed, setLoadFailed] = useState(false);
-
-    const iframeData = useMemo(() => extractIframeData(iframeHtmlFromDb), [iframeHtmlFromDb]);
-    const timeoutRef = useRef(null);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
-    useEffect(() => {
-        if (!open) return;
-
-        setLoading(true);
-        setLoadFailed(false);
-
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-            setLoading(false);
-            setLoadFailed(true);
-        }, 8000);
-
-        return () => {
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-            timeoutRef.current = null;
-        };
-    }, [open, iframeData.src]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        const onKey = (e) => {
-            if (e.key === "Escape") onClose();
-        };
-
-        const prevOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
-        window.addEventListener("keydown", onKey);
-
-        return () => {
-            document.body.style.overflow = prevOverflow;
-            window.removeEventListener("keydown", onKey);
-        };
-    }, [open, onClose]);
-
-    if (!open || !mounted) return null;
-
-    return createPortal(
-        <div
-            className="fixed inset-0 z-[300] bg-black/85 p-1 sm:p-3"
-            role="dialog"
-            aria-modal="true"
-            onMouseDown={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
-        >
-            <div className="mx-auto grid h-[80vh] w-[95vw] lg:w-[75vw] max-w-[1100px] grid-rows-[auto_1fr] overflow-hidden rounded-xl bg-white shadow-2xl">
-                <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
-                    <div className="min-w-0">
-                        <div className="truncate text-base font-bold text-gray-900 sm:text-lg">
-                            {title}
-                        </div>
-                        <div className="truncate text-xs text-gray-500 sm:text-sm">
-                            Video Preview
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={onClose}
-                        className="shrink-0 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-                    >
-                        Close
-                    </button>
-                </div>
-
-                <div className="min-h-0 p-2 sm:p-4">
-                    {!iframeData.src ? (
-                        <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-300 text-center text-sm text-gray-500">
-                            No video iframe available
-                        </div>
-                    ) : loadFailed ? (
-                        <div className="flex h-full flex-col items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-6 text-center">
-                            <div className="text-lg font-bold text-red-700">Video preview failed to load</div>
-                            <div className="mt-2 break-all text-sm text-gray-600">{iframeData.src}</div>
-                            <a
-                                href={iframeData.src}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:opacity-90"
-                            >
-                                Open Video in New Tab
-                            </a>
-                        </div>
-                    ) : (
-                        <div className="relative h-full w-full overflow-hidden rounded-xl border border-gray-200 bg-black">
-                            {loading && (
-                                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white">
-                                    <img
-                                        src={LOADING_IMAGE}
-                                        alt="Loading"
-                                        className="h-24 w-24 object-contain sm:h-32 sm:w-32"
-                                    />
-                                    <div className="mt-3 text-sm text-gray-600">Loading video...</div>
-                                </div>
-                            )}
-
-                            <div
-                                className="absolute inset-0"
-                                style={{ position: "relative", paddingTop: "56.25%", height: "100%" }}
-                            >
-                                <iframe
-                                    src={iframeData.src}
-                                    allowFullScreen
-                                    title={iframeData.title || title || "Video Player"}
-                                    style={{
-                                        position: "absolute",
-                                        top: 0,
-                                        left: 0,
-                                        width: "100%",
-                                        height: "100%",
-                                        border: "none",
-                                    }}
-                                    onLoad={() => {
-                                        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-                                        timeoutRef.current = null;
-                                        setLoading(false);
-                                        setLoadFailed(false);
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>,
-        document.body
-    );
 }
 
 function OfferLetterModal({
@@ -352,14 +194,14 @@ function OfferLetterModal({
                 if (e.target === e.currentTarget) onClose();
             }}
         >
-            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-                <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6">
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
                     <div>
                         <div className="text-lg font-bold text-gray-900">
                             {offer ? "View / Edit Offer Letter" : "Upload Offer Letter"}
                         </div>
                         <div className="text-sm text-gray-500">
-                            {candidate?.fullName || "Candidate"} • {candidate?.referenceNumber || "—"}
+                            {candidate?.fullName || "Candidate"}
                         </div>
                     </div>
 
@@ -371,7 +213,7 @@ function OfferLetterModal({
                     </button>
                 </div>
 
-                <div className="space-y-4 p-4 sm:p-6">
+                <div className="space-y-4 p-4 sm:p-5">
                     {offer ? (
                         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                             <div className="text-sm font-semibold text-gray-800">
@@ -398,7 +240,7 @@ function OfferLetterModal({
                                     disabled={submitting}
                                     className="rounded-lg border border-red-600 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    Remove Offer Letter
+                                    Remove
                                 </button>
                             </div>
                         </div>
@@ -439,13 +281,112 @@ function OfferLetterModal({
                             disabled={submitting || !file}
                             className="rounded-lg bg-red-700 px-4 py-2 text-sm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            {submitting ? "Saving..." : offer ? "Update Offer Letter" : "Upload Offer Letter"}
+                            {submitting ? "Uploading file..." : offer ? "Update Offer Letter" : "Upload Offer Letter"}
                         </button>
                     </div>
                 </div>
             </div>
         </div>,
         document.body
+    );
+}
+
+function ConfirmRemoveModal({
+    open,
+    candidate,
+    submitting,
+    onConfirm,
+    onNo,
+    onCancel,
+}) {
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onKey = (e) => {
+            if (e.key === "Escape") onCancel();
+        };
+
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        window.addEventListener("keydown", onKey);
+
+        return () => {
+            document.body.style.overflow = prevOverflow;
+            window.removeEventListener("keydown", onKey);
+        };
+    }, [open, onCancel]);
+
+    if (!open || !mounted || !candidate) return null;
+
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[320] flex items-center justify-center bg-black/70 p-3"
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onCancel();
+            }}
+        >
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+                <div className="border-b px-4 py-3 sm:px-5">
+                    <div className="text-lg font-bold text-gray-900">Confirm Remove</div>
+                    <div className="text-sm text-gray-500">
+                        {candidate?.fullName || "Candidate"}
+                    </div>
+                </div>
+
+                <div className="p-4 sm:p-5">
+                    <div className="text-sm text-gray-800">
+                        Are you sure want to remove form this job?
+                    </div>
+
+                    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        <button
+                            onClick={onCancel}
+                            disabled={submitting}
+                            className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            Cancel
+                        </button>
+
+                        <button
+                            onClick={onNo}
+                            disabled={submitting}
+                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            No
+                        </button>
+
+                        <button
+                            onClick={() => onConfirm(candidate)}
+                            disabled={submitting}
+                            className="rounded-lg bg-red-700 px-4 py-2 text-sm text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {submitting ? "Removing..." : "Yes, Remove"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+function RemoveButton({ onClick, title = "Remove candidate" }) {
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 hover:bg-red-50"
+        >
+            <IoClose className="h-4 w-4 text-gray-500" />
+        </button>
     );
 }
 
@@ -464,18 +405,20 @@ export default function JobCandidatesPage() {
 
     const [selectedCandidate, setSelectedCandidate] = useState(null);
 
-    const [videoModal, setVideoModal] = useState({
-        open: false,
-        title: "",
-        iframeHtmlFromDb: "",
-    });
-
     const [offerModal, setOfferModal] = useState({
         open: false,
         candidate: null,
     });
+
+    const [removeConfirmModal, setRemoveConfirmModal] = useState({
+        open: false,
+        candidate: null,
+    });
+
     const [offerSubmitting, setOfferSubmitting] = useState(false);
     const [offerError, setOfferError] = useState("");
+    const [removingCandidateId, setRemovingCandidateId] = useState("");
+    const [clearingSuggested, setClearingSuggested] = useState(false);
 
     const cvTimeoutRef = useRef(null);
     const cvLoadedRef = useRef(false);
@@ -489,22 +432,6 @@ export default function JobCandidatesPage() {
 
     const scrollToRef = (ref) => ref?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    function openVideoModal(title, iframeHtmlFromDb) {
-        setVideoModal({
-            open: true,
-            title,
-            iframeHtmlFromDb: String(iframeHtmlFromDb || ""),
-        });
-    }
-
-    function closeVideoModal() {
-        setVideoModal({
-            open: false,
-            title: "",
-            iframeHtmlFromDb: "",
-        });
-    }
-
     function openOfferModal(candidate) {
         setOfferError("");
         setOfferModal({
@@ -516,6 +443,20 @@ export default function JobCandidatesPage() {
     function closeOfferModal() {
         setOfferError("");
         setOfferModal({
+            open: false,
+            candidate: null,
+        });
+    }
+
+    function openRemoveConfirmModal(candidate) {
+        setRemoveConfirmModal({
+            open: true,
+            candidate,
+        });
+    }
+
+    function closeRemoveConfirmModal() {
+        setRemoveConfirmModal({
             open: false,
             candidate: null,
         });
@@ -548,6 +489,31 @@ export default function JobCandidatesPage() {
                 ? { ...prev, candidate: { ...prev.candidate, ...patch } }
                 : prev
         );
+
+        setRemoveConfirmModal((prev) =>
+            String(prev?.candidate?.documentId) === String(candidateDocumentId)
+                ? { ...prev, candidate: { ...prev.candidate, ...patch } }
+                : prev
+        );
+    }
+
+    function removeCandidateAcrossState(candidateDocumentId) {
+        setSuggestedCandidates((prev) => removeCandidateFromList(prev, candidateDocumentId));
+        setShortlistedCandidates((prev) => removeCandidateFromList(prev, candidateDocumentId));
+        setRequestedInterviewCandidates((prev) => removeCandidateFromList(prev, candidateDocumentId));
+        setHiredCandidates((prev) => removeCandidateFromList(prev, candidateDocumentId));
+
+        if (String(selectedCandidate?.documentId) === String(candidateDocumentId)) {
+            closeCandidate();
+        }
+
+        if (String(offerModal?.candidate?.documentId) === String(candidateDocumentId)) {
+            closeOfferModal();
+        }
+
+        if (String(removeConfirmModal?.candidate?.documentId) === String(candidateDocumentId)) {
+            closeRemoveConfirmModal();
+        }
     }
 
     async function hydrateHiredOfferLetters(list) {
@@ -712,26 +678,39 @@ export default function JobCandidatesPage() {
     }
 
     async function handleUploadOfferLetter(candidate, file) {
-        if (!file) return;
+        if (!jobDocumentId || !candidate?.documentId || !file) return;
 
-        const fd = new FormData();
-        fd.append("action", "uploadOfferLetter");
-        fd.append("jobDocumentId", jobDocumentId);
-        fd.append("candidateDocumentId", candidate.documentId);
-        fd.append("file", file);
+        setOfferSubmitting(true);
+        setOfferError("");
 
-        const res = await fetch("/api/jobs/candidates/move", {
-            method: "POST",
-            body: fd,
-        });
+        try {
+            const fd = new FormData();
+            fd.append("action", "uploadOfferLetter");
+            fd.append("jobDocumentId", jobDocumentId);
+            fd.append("candidateDocumentId", candidate.documentId);
+            fd.append("file", file);
 
-        const json = await res.json();
+            const res = await fetch("/api/jobs/candidates/move", {
+                method: "POST",
+                body: fd,
+            });
 
-        if (!res.ok || json?.ok === false) {
-            throw new Error(json?.error || "Upload failed");
+            const json = await res.json();
+
+            if (!res.ok || json?.ok === false) {
+                throw new Error(json?.error || "Upload failed");
+            }
+
+            refreshCandidateAcrossState(candidate.documentId, {
+                offerLetter: ensureOfferLetterShape(json?.offerLetter),
+            });
+
+            closeOfferModal();
+        } catch (e) {
+            setOfferError(e?.message || "Upload failed");
+        } finally {
+            setOfferSubmitting(false);
         }
-
-        return json;
     }
 
     async function handleRemoveOfferLetter(candidate) {
@@ -760,6 +739,65 @@ export default function JobCandidatesPage() {
         }
     }
 
+    async function handleRemoveCandidateConfirmed(candidate) {
+        if (!jobDocumentId || !candidate?.documentId) return;
+
+        const oldSuggested = suggestedCandidates;
+        const oldShortlisted = shortlistedCandidates;
+        const oldInterview = requestedInterviewCandidates;
+        const oldHired = hiredCandidates;
+
+        setRemovingCandidateId(String(candidate.documentId));
+        removeCandidateAcrossState(candidate.documentId);
+
+        try {
+            await fetchJsonSafe(`/api/jobs/candidates/move`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "removeCandidate",
+                    jobDocumentId,
+                    candidateDocumentId: candidate.documentId,
+                }),
+            });
+
+            closeRemoveConfirmModal();
+        } catch (e) {
+            setSuggestedCandidates(oldSuggested);
+            setShortlistedCandidates(oldShortlisted);
+            setRequestedInterviewCandidates(oldInterview);
+            setHiredCandidates(oldHired);
+            closeRemoveConfirmModal();
+            alert(e?.message || "Failed to remove candidate");
+        } finally {
+            setRemovingCandidateId("");
+        }
+    }
+
+    async function handleClearSuggested() {
+        if (!jobDocumentId || suggestedCandidates.length === 0) return;
+        const oldSuggested = suggestedCandidates;
+
+        setClearingSuggested(true);
+        setSuggestedCandidates([]);
+
+        try {
+            await fetchJsonSafe(`/api/jobs/candidates/move`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "clearSuggestedCandidates",
+                    jobDocumentId,
+                }),
+            });
+        } catch (e) {
+            setSuggestedCandidates(oldSuggested);
+            alert(e?.message || "Failed to clear suggested candidates");
+        } finally {
+            setClearingSuggested(false);
+        }
+    }
+
     const candidateForPopup = useMemo(() => {
         if (!selectedCandidate) return null;
 
@@ -768,17 +806,32 @@ export default function JobCandidatesPage() {
             cvUrl: selectedCandidate.cvUrl || DUMMY_PDF,
             passportUrl: selectedCandidate.passportUrl || DUMMY_PDF,
             documents: Array.isArray(selectedCandidate.documents) ? selectedCandidate.documents : [],
-            workingVideoIframe: selectedCandidate.workingVideoIframe || "",
-            miScreeningVideoIframe: selectedCandidate.miScreeningVideoIframe || "",
+            workingVideoLink: selectedCandidate.workingVideoLink || "",
+            miScreeningVideoLink: selectedCandidate.miScreeningVideoLink || "",
             offerLetter: ensureOfferLetterShape(selectedCandidate.offerLetter),
         };
     }, [selectedCandidate]);
 
     const renderCandidateCard = (c, sectionKey) => {
         const offer = ensureOfferLetterShape(c?.offerLetter);
+        const isHired = sectionKey === "hired";
+        const hiredCardClass = isHired
+            ? offer
+                ? "bg-green-50 border-green-200"
+                : "bg-orange-50 border-orange-200"
+            : "bg-gray-100 border-transparent";
+
+        const offerBtnClass = offer
+            ? "bg-green-600 hover:bg-green-700"
+            : "bg-orange-500 hover:bg-orange-600";
 
         return (
-            <div key={c.documentId || c.id} className="relative rounded-2xl bg-gray-100 p-3">
+            <div key={c.documentId || c.id} className={`relative rounded-2xl border p-3 ${hiredCardClass}`}>
+                <RemoveButton
+                    onClick={() => openRemoveConfirmModal(c)}
+                    title="Remove candidate from job"
+                />
+
                 <div className="flex items-center gap-3 pr-9">
                     <img
                         src={c.avatar}
@@ -807,17 +860,23 @@ export default function JobCandidatesPage() {
                     {sectionKey === "hired" ? (
                         <button
                             onClick={() => openOfferModal(c)}
-                            className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
+                            className={`w-full rounded-lg px-3 bg-blue-600 py-2 text-sm text-white ${offerBtnClass}`}
                         >
                             {offer ? "View Offer Letter" : "Upload Offer Letter"}
                         </button>
+                    ) : null}
+
+                    {removingCandidateId === String(c.documentId) ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <img src={LOADING_IMAGE} alt="Removing" className="h-5 w-5" />
+                            Removing...
+                        </div>
                     ) : null}
                 </div>
             </div>
         );
     };
 
-    const isInSuggested = candidateForPopup?.currentProcess === "suggested";
     const isInShortlisted = candidateForPopup?.currentProcess === "shortlisted";
     const isInInterview = candidateForPopup?.currentProcess === "interview";
     const isInHired = candidateForPopup?.currentProcess === "hired";
@@ -919,6 +978,16 @@ export default function JobCandidatesPage() {
                         <h2 className="text-2xl font-bold text-red-600">
                             Suggested Candidates <span className="font-medium text-gray-500">({suggestedCandidates.length})</span>
                         </h2>
+
+                        {suggestedCandidates.length > 0 ? (
+                            <button
+                                onClick={handleClearSuggested}
+                                disabled={clearingSuggested}
+                                className="text-sm font-medium text-red-600 underline disabled:opacity-60"
+                            >
+                                {clearingSuggested ? "Clearing..." : "Clear all suggested candidates"}
+                            </button>
+                        ) : null}
                     </div>
 
                     {suggestedCandidates.length === 0 ? (
@@ -1030,7 +1099,7 @@ export default function JobCandidatesPage() {
                             {isInHired ? (
                                 <button
                                     onClick={() => openOfferModal(candidateForPopup)}
-                                    className="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm text-white hover:opacity-90 sm:w-auto"
+                                    className={`w-full rounded-lg px-4 py-2 text-sm text-white sm:w-auto ${candidateForPopup?.offerLetter ? "bg-blue-600 hover:bg-green-700" : "bg-orange-500 hover:bg-orange-600"}`}
                                 >
                                     {candidateForPopup?.offerLetter ? "View Offer Letter" : "Upload Offer Letter"}
                                 </button>
@@ -1124,13 +1193,15 @@ export default function JobCandidatesPage() {
                             <div className="rounded-xl border border-gray-400 p-3">
                                 <div className="text-sm text-gray-800">Working Video</div>
                                 <div className="mt-2">
-                                    {hasIframeHtml(candidateForPopup?.workingVideoIframe) ? (
-                                        <button
-                                            onClick={() => openVideoModal("Working Video", candidateForPopup?.workingVideoIframe)}
-                                            className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
+                                    {isValidLink(candidateForPopup?.workingVideoLink) ? (
+                                        <a
+                                            href={candidateForPopup.workingVideoLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-block rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
                                         >
                                             Open Video
-                                        </button>
+                                        </a>
                                     ) : (
                                         <div className="text-xs text-gray-500">None</div>
                                     )}
@@ -1140,15 +1211,15 @@ export default function JobCandidatesPage() {
                             <div className="rounded-xl border border-gray-400 p-3">
                                 <div className="text-sm text-gray-800">MI Screening Video</div>
                                 <div className="mt-2">
-                                    {hasIframeHtml(candidateForPopup?.miScreeningVideoIframe) ? (
-                                        <button
-                                            onClick={() =>
-                                                openVideoModal("MI Screening Video", candidateForPopup?.miScreeningVideoIframe)
-                                            }
-                                            className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
+                                    {isValidLink(candidateForPopup?.miScreeningVideoLink) ? (
+                                        <a
+                                            href={candidateForPopup.miScreeningVideoLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-block rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:opacity-90"
                                         >
                                             Open Video
-                                        </button>
+                                        </a>
                                     ) : (
                                         <div className="text-xs text-gray-500">None</div>
                                     )}
@@ -1317,13 +1388,6 @@ export default function JobCandidatesPage() {
                 </div>
             )}
 
-            <VideoViewerModal
-                open={videoModal.open}
-                title={videoModal.title}
-                iframeHtmlFromDb={videoModal.iframeHtmlFromDb}
-                onClose={closeVideoModal}
-            />
-
             <OfferLetterModal
                 open={offerModal.open}
                 candidate={offerModal.candidate}
@@ -1332,6 +1396,15 @@ export default function JobCandidatesPage() {
                 onRemove={handleRemoveOfferLetter}
                 submitting={offerSubmitting}
                 error={offerError}
+            />
+
+            <ConfirmRemoveModal
+                open={removeConfirmModal.open}
+                candidate={removeConfirmModal.candidate}
+                submitting={!!removingCandidateId}
+                onConfirm={handleRemoveCandidateConfirmed}
+                onNo={closeRemoveConfirmModal}
+                onCancel={closeRemoveConfirmModal}
             />
         </>
     );
