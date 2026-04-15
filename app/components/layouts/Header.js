@@ -57,8 +57,8 @@ function getMenuLinksByRole(role, userDocumentId) {
     if (normalized === "candidates") {
         return [
             { label: "Dashboard", href: "/candidate" },
-            { label: "My Jobs", href: `/candidate/jobs/${userDocumentId}` },
-            { label: "My Profile", href: `/candidate/profile/${userDocumentId}` },
+            { label: "My Jobs", href: `/candidate/${userDocumentId}/jobs` },
+            { label: "My Profile", href: `/candidate/${userDocumentId}/profile` },
         ];
     }
 

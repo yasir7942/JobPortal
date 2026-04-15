@@ -98,6 +98,12 @@ function rolesLabel(roles = []) {
     return `${roles[0]} +${roles.length - 1}`;
 }
 
+function rolesLabelName(roles = []) {
+
+    if (!roles?.length) return "—";
+    return roles.join(", ");
+}
+
 function isVerifiedValue(v) {
     const s = String(v || "").toLowerCase();
     return s === "verified" || s === "yes" || s === "true";
@@ -364,7 +370,7 @@ export default function CandidatesPage() {
 
                                             <td className="px-3 py-2 text-sm text-gray-800">{c.mobile || "—"}</td>
                                             <td className="px-3 py-2 text-sm text-gray-800">{c.nationalityList || "—"}</td>
-                                            <td className="px-3 py-2 text-sm text-gray-800">{rolesLabel(c.job_roles || [])}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-800">{rolesLabelName(c.job_roles || [])}</td>
 
                                             <td className="px-3 py-2">
                                                 <StatusPill status={c.jobStatus} />
@@ -465,167 +471,103 @@ export default function CandidatesPage() {
                                 </div>
                             </div>
 
+
+
                             {detailLoading ? (
-                                <div className="mt-4 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">Loading details...</div>
-                            ) : detailError ? (
-                                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{detailError}</div>
-                            ) : (
-                                <>
-                                    <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
-                                        <div className="flex items-center gap-4">
-                                            <img
-                                                src={safeImgSrc(detail?.existingMedia?.profileImage?.url || selectedCandidate.profileImageUrl)}
-                                                alt={selectedCandidate.fullName}
-                                                className="h-28 w-28 rounded-full object-cover border border-gray-200 bg-white"
-                                                onError={(e) => {
-                                                    e.currentTarget.onerror = null;
-                                                    e.currentTarget.src = DEFAULT_AVATAR;
-                                                }}
-                                            />
-                                            <div>
-                                                <div className="text-xl text-red-700">{detail?.formDefaults?.fullName || selectedCandidate.fullName}</div>
-                                                <div className="text-sm text-gray-800">
-                                                    {rolesLabel(selectedCandidate.job_roles || [])} •{" "}
-                                                    <span className="font-medium">{detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus || "—"}</span>
-                                                </div>
-
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    <InfoChip label="Experience:" value={`${detail?.formDefaults?.numberOfExperience ?? 0}Y`} />
-                                                    <InfoChip label="Employed:" value={detail?.formDefaults?.currentlyEmployed ? "Yes" : "No"} />
-                                                    <InfoChip label="Source:" value={detail?.formDefaults?.source || "—"} />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="sm:ml-auto flex items-center gap-2">
-                                            <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700">
-                                                <VerifiedIcon ok={isVerifiedValue(detail?.formDefaults?.isProfileVerifiedList || selectedCandidate.isProfileVerifiedList)} />
-                                                <span>{detail?.formDefaults?.isProfileVerifiedList || selectedCandidate.isProfileVerifiedList || "Not Verified"}</span>
-                                            </span>
-                                            <StatusPill status={detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus} />
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 rounded-xl border border-gray-400 p-3 ">
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                                            {[
-                                                ["Reference", detail?.formDefaults?.referenceNumber || selectedCandidate.referenceNumber],
-                                                ["First Name", detail?.formDefaults?.firstName],
-                                                ["Last Name", detail?.formDefaults?.lastName],
-                                                ["Username", detail?.formDefaults?.username],
-                                                ["Email", detail?.formDefaults?.email],
-                                                ["Mobile", detail?.formDefaults?.mobile],
-                                                ["Birth Date", detail?.formDefaults?.birthDate],
-                                                ["Gender", detail?.formDefaults?.genderList],
-                                                ["Nationality", detail?.formDefaults?.nationalityList],
-                                                ["Marital Status", detail?.formDefaults?.maritalStatusList],
-                                                ["Seasonal Status", detail?.formDefaults?.seasonalStatusList],
-                                                ["English Level", detail?.formDefaults?.englishLevelList],
-                                                ["Previous Company", detail?.formDefaults?.previousCompany],
-                                                ["Previous Job Experience", `${detail?.formDefaults?.previousJobExperiece ?? 0}Y`],
-                                                ["Current Company", detail?.formDefaults?.currentCompany],
-                                                ["Current Job Experience", `${detail?.formDefaults?.currentJobExperiece ?? 0}Y`],
-                                                ["Passport Expiry", detail?.formDefaults?.passportExpireDate],
-                                            ].map(([k, v]) => (
-                                                <div className="text-sm" key={k}>
-                                                    <div className="text-gray-700 ">{k}</div>
-                                                    <div className="text-gray-800 break-words">{v || "—"}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            <div className="text-sm">
-                                                <div className="text-gray-700">Short Summary</div>
-                                                <div className="text-gray-800">{detail?.formDefaults?.shortSummary || "—"}</div>
-                                            </div>
-                                            <div className="text-sm">
-                                                <div className="text-gray-700">Private Notes</div>
-                                                <div className="text-gray-800">{detail?.formDefaults?.privateNotes || "—"}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-                                        <div className="rounded-xl border border-gray-400 p-3">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="text-base text-gray-800">Passport</div>
-                                                {detail?.existingMedia?.passport?.url ? (
-                                                    <a
-                                                        href={detail.existingMedia.passport.url}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="text-sm rounded-lg bg-gray-900 text-white px-3 py-2 hover:opacity-90"
-                                                    >
-                                                        Download
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-xs text-gray-500">No file</span>
-                                                )}
-                                            </div>
-                                            <div className="text-xs text-gray-800 mt-2">Expiry: {detail?.formDefaults?.passportExpireDate || "—"}</div>
-                                        </div>
-
-                                        <div className="rounded-xl border border-gray-400 p-3">
-                                            <div className="text-sm text-gray-800">Working Video</div>
-                                            <div className="mt-2">
-                                                {isValidLink(detail?.formDefaults?.workingVideoLink) ? (
-                                                    <a
-                                                        className="text-sm text-blue-600 hover:underline"
-                                                        href={detail.formDefaults.workingVideoLink}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                    >
-                                                        Open Video
-                                                    </a>
-                                                ) : (
-                                                    <div className="text-xs text-gray-500">None</div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="rounded-xl border border-gray-400 p-3">
-                                            <div className="text-sm text-gray-800">MI Screening Video</div>
-                                            <div className="mt-2">
-                                                {isValidLink(detail?.formDefaults?.miScreeningVideoLink) ? (
-                                                    <a
-                                                        className="text-sm text-blue-600 hover:underline"
-                                                        href={detail.formDefaults.miScreeningVideoLink}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                    >
-                                                        Open Video
-                                                    </a>
-                                                ) : (
-                                                    <div className="text-xs text-gray-500">None</div>
-                                                )}
-                                            </div>
-                                            <div className="text-xs text-gray-800 mt-2">Screening Date: {detail?.formDefaults?.dateScreeningInterview || "—"}</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 rounded-xl border border-gray-400 p-3">
-                                        <div className="text-sm text-gray-800">Documents ({detail?.formDefaults?.documents?.length || 0})</div>
-
-                                        <div className="mt-3 space-y-2">
-                                            {(detail?.formDefaults?.documents || []).map((d, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className="rounded-xl border border-gray-400 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
-                                                >
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="text-sm text-gray-800 truncate">{d.name || "—"}</div>
-                                                        <div className="text-xs text-gray-800">
-                                                            Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
-                                                        </div>
+                                <div className="flex justify-start items-center gap-3 text-sm text-gray-600">
+                                    <ClipLoader size={25} color="#b91c1c" speedMultiplier={1} />
+                                    <div className="text-left">Loading filters...</div>
+                                </div>
+                            )
+                                : detailError ? (
+                                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{detailError}</div>
+                                ) : (
+                                    <>
+                                        <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                                            <div className="flex items-center gap-4">
+                                                <img
+                                                    src={safeImgSrc(detail?.existingMedia?.profileImage?.url || selectedCandidate.profileImageUrl)}
+                                                    alt={selectedCandidate.fullName}
+                                                    className="h-28 w-28 rounded-full object-cover border border-gray-200 bg-white"
+                                                    onError={(e) => {
+                                                        e.currentTarget.onerror = null;
+                                                        e.currentTarget.src = DEFAULT_AVATAR;
+                                                    }}
+                                                />
+                                                <div>
+                                                    <div className="text-xl text-red-700">{detail?.formDefaults?.fullName || selectedCandidate.fullName}</div>
+                                                    <div className="text-sm text-gray-800">
+                                                        {rolesLabelName(selectedCandidate.job_roles || [])} •{" "}
+                                                        <span className="font-medium">{detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus || "—"}</span>
                                                     </div>
 
-                                                    {d.existingUrl ? (
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        <InfoChip label="Experience:" value={`${detail?.formDefaults?.numberOfExperience ?? 0}Y`} />
+                                                        <InfoChip label="Employed:" value={detail?.formDefaults?.currentlyEmployed ? "Yes" : "No"} />
+                                                        <InfoChip label="Source:" value={detail?.formDefaults?.source || "—"} />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="sm:ml-auto flex items-center gap-2">
+                                                <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700">
+                                                    <VerifiedIcon ok={isVerifiedValue(detail?.formDefaults?.isProfileVerifiedList || selectedCandidate.isProfileVerifiedList)} />
+                                                    <span>{detail?.formDefaults?.isProfileVerifiedList || selectedCandidate.isProfileVerifiedList || "Not Verified"}</span>
+                                                </span>
+                                                <StatusPill status={detail?.formDefaults?.jobStatus || selectedCandidate.jobStatus} />
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 rounded-xl border border-gray-400 p-3 ">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                {[
+                                                    ["Reference", detail?.formDefaults?.referenceNumber || selectedCandidate.referenceNumber],
+                                                    ["First Name", detail?.formDefaults?.firstName],
+                                                    ["Last Name", detail?.formDefaults?.lastName],
+                                                    ["Username", detail?.formDefaults?.username],
+                                                    ["Email", detail?.formDefaults?.email],
+                                                    ["Mobile", detail?.formDefaults?.mobile],
+                                                    ["Birth Date", detail?.formDefaults?.birthDate],
+                                                    ["Gender", detail?.formDefaults?.genderList],
+                                                    ["Nationality", detail?.formDefaults?.nationalityList],
+                                                    ["Marital Status", detail?.formDefaults?.maritalStatusList],
+                                                    ["Seasonal Status", detail?.formDefaults?.seasonalStatusList],
+                                                    ["English Level", detail?.formDefaults?.englishLevelList],
+                                                    ["Previous Company", detail?.formDefaults?.previousCompany],
+                                                    ["Previous Job Experience", `${detail?.formDefaults?.previousJobExperiece ?? 0}Y`],
+                                                    ["Current Company", detail?.formDefaults?.currentCompany],
+                                                    ["Current Job Experience", `${detail?.formDefaults?.currentJobExperiece ?? 0}Y`],
+                                                    ["Passport Expiry", detail?.formDefaults?.passportExpireDate],
+                                                ].map(([k, v]) => (
+                                                    <div className="text-sm" key={k}>
+                                                        <div className="text-gray-700 ">{k}</div>
+                                                        <div className="text-gray-800 break-words">{v || "—"}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                <div className="text-sm">
+                                                    <div className="text-gray-700">Short Summary</div>
+                                                    <div className="text-gray-800">{detail?.formDefaults?.shortSummary || "—"}</div>
+                                                </div>
+                                                <div className="text-sm">
+                                                    <div className="text-gray-700">Private Notes</div>
+                                                    <div className="text-gray-800">{detail?.formDefaults?.privateNotes || "—"}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                            <div className="rounded-xl border border-gray-400 p-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-base text-gray-800">Passport</div>
+                                                    {detail?.existingMedia?.passport?.url ? (
                                                         <a
-                                                            href={d.existingUrl}
+                                                            href={detail.existingMedia.passport.url}
                                                             target="_blank"
                                                             rel="noreferrer"
-                                                            className="w-full sm:w-auto text-center rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:opacity-90"
+                                                            className="text-sm rounded-lg bg-gray-900 text-white px-3 py-2 hover:opacity-90"
                                                         >
                                                             Download
                                                         </a>
@@ -633,77 +575,147 @@ export default function CandidatesPage() {
                                                         <span className="text-xs text-gray-500">No file</span>
                                                     )}
                                                 </div>
-                                            ))}
-                                            {(detail?.formDefaults?.documents || []).length === 0 ? (
-                                                <div className="text-xs text-gray-500">No documents</div>
-                                            ) : null}
+                                                <div className="text-xs text-gray-800 mt-2">Expiry: {detail?.formDefaults?.passportExpireDate || "—"}</div>
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-400 p-3">
+                                                <div className="text-sm text-gray-800">Working Video</div>
+                                                <div className="mt-2">
+                                                    {isValidLink(detail?.formDefaults?.workingVideoLink) ? (
+                                                        <a
+                                                            className="text-sm text-blue-600 hover:underline"
+                                                            href={detail.formDefaults.workingVideoLink}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                        >
+                                                            Open Video
+                                                        </a>
+                                                    ) : (
+                                                        <div className="text-xs text-gray-500">None</div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-xl border border-gray-400 p-3">
+                                                <div className="text-sm text-gray-800">MI Screening Video</div>
+                                                <div className="mt-2">
+                                                    {isValidLink(detail?.formDefaults?.miScreeningVideoLink) ? (
+                                                        <a
+                                                            className="text-sm text-blue-600 hover:underline"
+                                                            href={detail.formDefaults.miScreeningVideoLink}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                        >
+                                                            Open Video
+                                                        </a>
+                                                    ) : (
+                                                        <div className="text-xs text-gray-500">None</div>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-gray-800 mt-2">Screening Date: {detail?.formDefaults?.dateScreeningInterview || "—"}</div>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <div className="mt-4">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="text-sm text-gray-800">CV Preview </div>
-                                            {detail?.existingMedia?.CV?.url ? (
-                                                <a href={detail.existingMedia.CV.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
-                                                    Open / Download
-                                                </a>
-                                            ) : (
-                                                <span className="text-xs text-gray-500">No file</span>
-                                            )}
-                                        </div>
+                                        <div className="mt-4 rounded-xl border border-gray-400 p-3">
+                                            <div className="text-sm text-gray-800">Documents ({detail?.formDefaults?.documents?.length || 0})</div>
 
-                                        {detail?.existingMedia?.CV?.url ? (
-                                            <div className="mt-2 rounded-xl border border-gray-400 overflow-hidden relative">
-                                                {isPdfUrl(detail.existingMedia.CV.url) ? (
-                                                    <>
-                                                        {cvLoading && (
-                                                            <div className="absolute inset-0 flex items-center justify-center bg-white">
-                                                                <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin" />
+                                            <div className="mt-3 space-y-2">
+                                                {(detail?.formDefaults?.documents || []).map((d, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        className="rounded-xl border border-gray-400 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+                                                    >
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-sm text-gray-800 truncate">{d.name || "—"}</div>
+                                                            <div className="text-xs text-gray-800">
+                                                                Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
                                                             </div>
-                                                        )}
+                                                        </div>
 
-                                                        {cvFailed ? (
-                                                            <div className="p-4 sm:p-6">
-                                                                <div className="text-red-700">CV preview failed to load</div>
-                                                                <p className="text-sm text-gray-800 mt-2">Use Open / Download to open in new tab.</p>
-                                                            </div>
+                                                        {d.existingUrl ? (
+                                                            <a
+                                                                href={d.existingUrl}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="w-full sm:w-auto text-center rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:opacity-90"
+                                                            >
+                                                                Download
+                                                            </a>
                                                         ) : (
-                                                            <div className="h-[65vh] sm:h-[78vh]">
-                                                                <iframe
-                                                                    src={detail.existingMedia.CV.url}
-                                                                    title="CV PDF"
-                                                                    className="w-full h-full"
-                                                                    onLoad={() => {
-                                                                        cvLoadedRef.current = true;
-                                                                        setCvLoading(false);
-                                                                        setCvFailed(false);
-                                                                        if (cvTimeoutRef.current) {
-                                                                            clearTimeout(cvTimeoutRef.current);
-                                                                            cvTimeoutRef.current = null;
-                                                                        }
-                                                                    }}
-                                                                />
-                                                            </div>
+                                                            <span className="text-xs text-gray-500">No file</span>
                                                         )}
-                                                    </>
-                                                ) : (
-                                                    <div className="p-3 bg-gray-50">
-                                                        <img
-                                                            src={detail.existingMedia.CV.url}
-                                                            alt="CV"
-                                                            className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-400 bg-white"
-                                                        />
                                                     </div>
+                                                ))}
+                                                {(detail?.formDefaults?.documents || []).length === 0 ? (
+                                                    <div className="text-xs text-gray-500">No documents</div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-sm text-gray-800">CV Preview </div>
+                                                {detail?.existingMedia?.CV?.url ? (
+                                                    <a href={detail.existingMedia.CV.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
+                                                        Open / Download
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-xs text-gray-500">No file</span>
                                                 )}
                                             </div>
-                                        ) : null}
 
-                                        <p className="mt-2 text-xs text-gray-500">
-                                            Tip: If preview doesn’t load, click <span className="text-gray-700">Open / Download</span>.
-                                        </p>
-                                    </div>
-                                </>
-                            )}
+                                            {detail?.existingMedia?.CV?.url ? (
+                                                <div className="mt-2 rounded-xl border border-gray-400 overflow-hidden relative">
+                                                    {isPdfUrl(detail.existingMedia.CV.url) ? (
+                                                        <>
+                                                            {cvLoading && (
+                                                                <div className="absolute inset-0 flex items-center justify-center bg-white">
+                                                                    <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin" />
+                                                                </div>
+                                                            )}
+
+                                                            {cvFailed ? (
+                                                                <div className="p-4 sm:p-6">
+                                                                    <div className="text-red-700">CV preview failed to load</div>
+                                                                    <p className="text-sm text-gray-800 mt-2">Use Open / Download to open in new tab.</p>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="h-[65vh] sm:h-[78vh]">
+                                                                    <iframe
+                                                                        src={detail.existingMedia.CV.url}
+                                                                        title="CV PDF"
+                                                                        className="w-full h-full"
+                                                                        onLoad={() => {
+                                                                            cvLoadedRef.current = true;
+                                                                            setCvLoading(false);
+                                                                            setCvFailed(false);
+                                                                            if (cvTimeoutRef.current) {
+                                                                                clearTimeout(cvTimeoutRef.current);
+                                                                                cvTimeoutRef.current = null;
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <div className="p-3 bg-gray-50">
+                                                            <img
+                                                                src={detail.existingMedia.CV.url}
+                                                                alt="CV"
+                                                                className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-400 bg-white"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : null}
+
+                                            <p className="mt-2 text-xs text-gray-500">
+                                                Tip: If preview doesn’t load, click <span className="text-gray-700">Open / Download</span>.
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
 
                             <div className="mt-4 flex justify-end">
                                 <button

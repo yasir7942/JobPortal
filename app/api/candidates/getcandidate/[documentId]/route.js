@@ -224,6 +224,7 @@ export async function GET(req, { params }) {
 
             jobStatus: candidate?.jobStatus || "",
             job_roles: pickRelIds(candidate?.job_roles),
+            job_roles_name: candidate?.job_roles?.map((role) => role.title) || [],
 
             isProfileVerifiedList: candidate?.isProfileVerifiedList || "",
             currentlyEmployed: !!candidate?.currentlyEmployed,
