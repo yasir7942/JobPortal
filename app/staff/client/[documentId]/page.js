@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import ClipLoader from "react-spinners/ClipLoader";
 
-
 import ENUMS from "../../../../config/enums.json";
 import ContactFieldArray from "@/app/staff/ui/ContactFieldArray";
 
@@ -26,9 +25,6 @@ import {
 } from "@/app/staff/ui/CandidateFormUI";
 import useAuthClient from "@/lib/useAuthClient";
 
-
-
-
 /* ------------------------------------------------------------------ */
 /* Schema (EDIT) */
 /* ------------------------------------------------------------------ */
@@ -45,6 +41,7 @@ const ClientEditSchema = z
         industriesList: z.string().optional(),
         companySizeList: z.string().optional(),
         statusList: z.string().optional(),
+        leadStatus: z.string().optional(),
 
         shortDescription: z.string().max(500, "Max 500 characters").optional(),
         privateNote: z.string().max(2000, "Max 2000 characters").optional(),
@@ -73,9 +70,9 @@ const ClientEditSchema = z
         retypePassword: z.string().optional(),
     })
     .superRefine((val, ctx) => {
-        // optional password change
         const p = String(val.password || "").trim();
         const rp = String(val.retypePassword || "").trim();
+
         if (p || rp) {
             if (p.length < 4) {
                 ctx.addIssue({
@@ -100,7 +97,6 @@ const ClientEditSchema = z
             }
         }
 
-        // logo validation (image only) if new file
         if (val.logo && val.logo instanceof File) {
             if (!fileExtOk(val.logo, [".jpg", ".jpeg", ".png", ".webp"])) {
                 ctx.addIssue({
@@ -111,7 +107,6 @@ const ClientEditSchema = z
             }
         }
 
-        // phone validation (only if provided)
         if (val.phone) {
             const p2 = String(val.phone).trim();
             if (p2.length < 7 || p2.length > 30) {
@@ -123,7 +118,6 @@ const ClientEditSchema = z
             }
         }
 
-        // contactList: if row has any value, require name
         (val.contactList || []).forEach((c, i) => {
             const any =
                 (c?.name || "").trim() ||
@@ -166,12 +160,13 @@ export default function EditClientPage() {
 
     const { user, role, loadingAuth } = useAuthClient();
 
-
-
-
     const [existingMedia, setExistingMedia] = useState({
         logo: { url: "", name: "", id: null },
     });
+
+    const leadStatusOptions = Array.isArray(ENUMS?.LeadStatus)
+        ? ENUMS.LeadStatus
+        : ["Lead", "Active", "Rejected"];
 
     const {
         register,
@@ -194,6 +189,7 @@ export default function EditClientPage() {
             industriesList: "",
             companySizeList: "",
             statusList: "",
+            leadStatus: "Lead",
 
             shortDescription: "",
             privateNote: "",
@@ -208,7 +204,6 @@ export default function EditClientPage() {
         },
     });
 
-    // fetch client -> reset form
     useEffect(() => {
         if (!documentId) return;
 
@@ -216,11 +211,16 @@ export default function EditClientPage() {
             setLoading(true);
             setSubmitMsg("");
             try {
-                // You will create this API route (or already have similar):
-                // should return: { formDefaults: {...}, existingMedia: {...} }
                 const json = await fetchJsonSafe(`/api/clients/getclient/${documentId}`);
-                reset(json?.formDefaults || {});
-                setExistingMedia(json?.existingMedia || existingMedia);
+                reset({
+                    ...(json?.formDefaults || {}),
+                    leadStatus: json?.formDefaults?.leadStatus || "Lead",
+                });
+                setExistingMedia(
+                    json?.existingMedia || {
+                        logo: { url: "", name: "", id: null },
+                    }
+                );
             } catch (e) {
                 console.error(e);
                 setSubmitMsg(`Error: ${e.message || "Failed to load client"} ❌`);
@@ -228,7 +228,6 @@ export default function EditClientPage() {
                 setLoading(false);
             }
         })();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [documentId, reset]);
 
     const logo = watch("logo");
@@ -255,17 +254,16 @@ export default function EditClientPage() {
         }));
 
         try {
-            // JSON without File objects (same as candidate edit style) :contentReference[oaicite:4]{index=4}
             const payloadData = {
                 ...formData,
                 logo: undefined,
+                leadStatus: formData.leadStatus || "Lead",
                 contactList: contacts,
             };
 
             const fd = new FormData();
             fd.append("data", JSON.stringify(payloadData));
 
-            // only send new logo if selected
             if (formData.logo instanceof File) {
                 fd.append("files.logo", formData.logo);
             }
@@ -288,43 +286,29 @@ export default function EditClientPage() {
     if (loading && loadingAuth) {
         return (
             <div className="min-h-screen bg-gray-50">
-
                 <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
                     <div className="flex justify-start items-center gap-3 rounded-2xl border border-gray-200 bg-white p-6">
-
                         <ClipLoader
                             size={25}
                             color="#b91c1c"
                             speedMultiplier={1}
                         />
-                        <div className="text-left">
-                            Loading Client...
-                        </div>
-
+                        <div className="text-left">Loading Client...</div>
                     </div>
                 </main>
             </div>
         );
     }
 
-
-    console.log("User:", user);
-
     return (
         <div className="min-h-screen bg-gray-50">
-
-
-
-
             <div className="topHeading">
-
-                {["client", "clients"].includes(user.role?.name?.toLowerCase()) ? (
-                    <span>Update {user.name}</span>
+                {["client", "clients"].includes(user?.role?.name?.toLowerCase()) ? (
+                    <span>Update {user?.name}</span>
                 ) : (
-                    <span> Update Client</span>
+                    <span>Update Client</span>
                 )}
             </div>
-
 
             <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -332,26 +316,23 @@ export default function EditClientPage() {
                         <div className="flex items-center justify-between gap-2">
                             <div>
                                 <div className="text-lg text-gray-900 font-semibold">
-                                    {["client", "clients"].includes(user.role?.name?.toLowerCase()) ? (
-                                        <span>{user.name} Data</span>
+                                    {["client", "clients"].includes(user?.role?.name?.toLowerCase()) ? (
+                                        <span>{user?.name} Data</span>
                                     ) : (
                                         <span>Client Data</span>
                                     )}
-
                                 </div>
                                 <div className="text-sm text-gray-600">Update client details.</div>
                             </div>
 
-
-
-                            {(user.role?.name === "staff") &&
+                            {user?.role?.name === "staff" && (
                                 <Link
                                     href="/staff/client"
                                     className="rounded-xl border border-gray-400 bg-white px-6 py-2 text-base text-gray-700 hover:bg-gray-50"
                                 >
                                     Back
-                                </Link>}
-
+                                </Link>
+                            )}
                         </div>
                     </header>
 
@@ -443,7 +424,7 @@ export default function EditClientPage() {
                             <div className="text-base text-red-600 font-semibold">Classification</div>
                             <div className="text-sm text-gray-800 mt-1">Company category dropdowns.</div>
 
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-5 gap-4">
                                 <Field label="Country" error={errors.countryList?.message}>
                                     <Select {...register("countryList")}>
                                         <option value="">Choose here</option>
@@ -481,6 +462,17 @@ export default function EditClientPage() {
                                     <Select {...register("statusList")}>
                                         <option value="">Choose here</option>
                                         {(ENUMS.status || ENUMS.statusList || []).map((x) => (
+                                            <option key={x} value={x}>
+                                                {x}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+
+                                <Field label="Lead Status" error={errors.leadStatus?.message}>
+                                    <Select {...register("leadStatus")}>
+                                        <option value="">Choose here</option>
+                                        {leadStatusOptions.map((x) => (
                                             <option key={x} value={x}>
                                                 {x}
                                             </option>
@@ -586,7 +578,12 @@ export default function EditClientPage() {
                         </div>
 
                         {submitMsg ? (
-                            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                            <div
+                                className={`rounded-xl px-4 py-3 text-sm ${submitMsg.startsWith("Error:")
+                                    ? "border border-red-200 bg-red-50 text-red-700"
+                                    : "border border-green-200 bg-green-50 text-green-700"
+                                    }`}
+                            >
                                 {submitMsg}
                             </div>
                         ) : null}

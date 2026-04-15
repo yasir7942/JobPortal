@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import Header from "@/app/components/layouts/staff/Header";
+
 
 import ENUMS from "../../../../config/enums.json";
 
@@ -36,11 +36,12 @@ const ClientCreateSchema = z
         phone: z.string().optional(),
         website: z.string().optional(),
 
-        // dropdowns (ends with List => dropdown)
+        // dropdowns
         countryList: z.string().optional(),
         industriesList: z.string().optional(),
         companySizeList: z.string().optional(),
         statusList: z.string().optional(),
+        leadStatus: z.string().optional(),
 
         shortDescription: z.string().max(500, "Max 500 characters").optional(),
         privateNote: z.string().max(2000, "Max 2000 characters").optional(),
@@ -63,11 +64,10 @@ const ClientCreateSchema = z
         // account section
         username: z.string().min(3, "Username must be at least 3 characters"),
         email: z.string().email("Invalid email"),
-        password: z.string().min(8, "Password must be at least 8 characters"),
-        retypePassword: z.string().min(8, "Retype password is required"),
+        password: z.string().min(3, "Password must be at least 3 characters"),
+        retypePassword: z.string().min(3, "Retype password is required"),
     })
     .superRefine((val, ctx) => {
-        // password match
         if (val.password !== val.retypePassword) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
@@ -76,7 +76,6 @@ const ClientCreateSchema = z
             });
         }
 
-        // logo validation (image only)
         if (val.logo && val.logo instanceof File) {
             if (!fileExtOk(val.logo, [".jpg", ".jpeg", ".png", ".webp"])) {
                 ctx.addIssue({
@@ -87,7 +86,6 @@ const ClientCreateSchema = z
             }
         }
 
-        // phone validation (only if provided)
         if (val.phone) {
             const p = String(val.phone).trim();
             if (p.length < 7 || p.length > 30) {
@@ -99,7 +97,6 @@ const ClientCreateSchema = z
             }
         }
 
-        // contactList validation: if a row has any field filled, require name
         (val.contactList || []).forEach((c, i) => {
             const any =
                 (c?.name || "").trim() ||
@@ -133,6 +130,10 @@ const ClientCreateSchema = z
 export default function NewClientPage() {
     const [submitMsg, setSubmitMsg] = useState("");
 
+    const leadStatusOptions = Array.isArray(ENUMS?.LeadStatus)
+        ? ENUMS.LeadStatus
+        : ["Lead", "Active", "Rejected"];
+
     const {
         register,
         control,
@@ -154,6 +155,7 @@ export default function NewClientPage() {
             industriesList: "",
             companySizeList: "",
             statusList: "",
+            leadStatus: "Lead",
 
             shortDescription: "",
             privateNote: "",
@@ -184,20 +186,18 @@ export default function NewClientPage() {
     const onSubmit = async (formData) => {
         setSubmitMsg("");
 
-        // normalize phone
         if (formData.phone) formData.phone = normalizePhone(formData.phone);
 
-        // normalize contacts mobiles
         const contacts = (formData.contactList || []).map((c) => ({
             ...c,
             mobile: c?.mobile ? normalizePhone(c.mobile) : c?.mobile,
         }));
 
         try {
-            // IMPORTANT: don't send file inside JSON
             const payloadData = {
                 ...formData,
                 logo: undefined,
+                leadStatus: formData.leadStatus || "Lead",
                 contactList: contacts,
             };
 
@@ -217,7 +217,31 @@ export default function NewClientPage() {
             if (!res.ok) throw new Error(json?.error || "Client not saved");
 
             setSubmitMsg("Client + Account created ✅");
-            reset();
+            reset({
+                companyName: "",
+                ownerName: "",
+                city: "",
+                address: "",
+                phone: "",
+                website: "",
+
+                countryList: "",
+                industriesList: "",
+                companySizeList: "",
+                statusList: "",
+                leadStatus: "Lead",
+
+                shortDescription: "",
+                privateNote: "",
+
+                logo: null,
+                contactList: [],
+
+                username: "",
+                email: "",
+                password: "",
+                retypePassword: "",
+            });
         } catch (e) {
             setSubmitMsg(`Error: ${e?.message || "Client not saved"} ❌`);
         }
@@ -225,7 +249,11 @@ export default function NewClientPage() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <Header />
+
+            <div className="topHeading">
+                Create Client
+            </div>
+
 
             <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -330,7 +358,7 @@ export default function NewClientPage() {
                             <div className="text-base text-red-600 font-semibold">Classification</div>
                             <div className="text-sm text-gray-800 mt-1">Company category dropdowns.</div>
 
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-5 gap-4">
                                 <Field label="Country" error={errors.countryList?.message}>
                                     <Select {...register("countryList")}>
                                         <option value="">Choose here</option>
@@ -345,7 +373,6 @@ export default function NewClientPage() {
                                 <Field label="Industry" error={errors.industriesList?.message}>
                                     <Select {...register("industriesList")}>
                                         <option value="">Choose here</option>
-                                        {/* handle your enum typo too: industoryList */}
                                         {(ENUMS.industries || ENUMS.industriesList || []).map((x) => (
                                             <option key={x} value={x}>
                                                 {x}
@@ -369,6 +396,17 @@ export default function NewClientPage() {
                                     <Select {...register("statusList")}>
                                         <option value="">Choose here</option>
                                         {(ENUMS.status || []).map((x) => (
+                                            <option key={x} value={x}>
+                                                {x}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+
+                                <Field label="Lead Status" error={errors.leadStatus?.message}>
+                                    <Select {...register("leadStatus")}>
+                                        <option value="">Choose here</option>
+                                        {leadStatusOptions.map((x) => (
                                             <option key={x} value={x}>
                                                 {x}
                                             </option>
@@ -501,7 +539,12 @@ export default function NewClientPage() {
                         </div>
 
                         {submitMsg ? (
-                            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                            <div
+                                className={`rounded-xl px-4 py-3 text-sm ${submitMsg.startsWith("Error:")
+                                    ? "border border-red-200 bg-red-50 text-red-700"
+                                    : "border border-green-200 bg-green-50 text-green-700"
+                                    }`}
+                            >
                                 {submitMsg}
                             </div>
                         ) : null}

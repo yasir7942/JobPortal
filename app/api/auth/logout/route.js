@@ -5,22 +5,29 @@ import { JWT_COOKIE_NAME, USER_COOKIE_NAME } from "@/lib/auth";
 export const runtime = "nodejs";
 
 export async function POST() {
+    const isProd = process.env.NODE_ENV === "production";
+
     const response = NextResponse.json({ ok: true });
 
-    response.cookies.set(JWT_COOKIE_NAME, "", {
+    const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: isProd,
         sameSite: "lax",
         path: "/",
         maxAge: 0,
+        expires: new Date(0), // 👈 force delete
+    };
+
+    // Delete JWT cookie (httpOnly)
+    response.cookies.set(JWT_COOKIE_NAME, "", {
+        ...cookieOptions,
+        httpOnly: true,
     });
 
+    // Delete USER cookie (client readable)
     response.cookies.set(USER_COOKIE_NAME, "", {
+        ...cookieOptions,
         httpOnly: false,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 0,
     });
 
     return response;

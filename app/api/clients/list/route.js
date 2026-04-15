@@ -26,7 +26,6 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
     const name = attrs?.name ?? "";
     const id = m?.id ?? null;
 
-    // STRAPI_BASE_URL = http://127.0.0.1:1337/api
     const origin = String(STRAPI_BASE_URL || "").replace(/\/api\/?$/, "");
     const absUrl = url ? (url.startsWith("http") ? url : joinUrl(origin, url)) : "";
 
@@ -34,9 +33,8 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
 }
 
 function unwrapCollectionItem(item) {
-    // Strapi v4: {id, attributes:{...}}
-    // Strapi v5 often: {id, documentId, ...} or also {attributes}
     if (!item) return null;
+
     if (item.attributes) {
         return {
             id: item.id,
@@ -44,6 +42,7 @@ function unwrapCollectionItem(item) {
             ...item.attributes,
         };
     }
+
     return item;
 }
 
@@ -52,7 +51,9 @@ function getUserFields(client) {
         client?.users_permissions_user?.data ??
         client?.users_permissions_user ??
         null;
+
     const attrs = d?.attributes ?? d;
+
     return {
         id: d?.id ?? null,
         username: attrs?.username ?? "",
@@ -63,7 +64,7 @@ function getUserFields(client) {
 /* ----------------------------- route ------------------------------ */
 
 export async function GET(req) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // e.g. http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
@@ -117,11 +118,17 @@ export async function GET(req) {
                 url,
                 status: res.status,
                 hasAuth: !!headers.Authorization,
-                authPreview: headers.Authorization ? headers.Authorization.slice(0, 18) + "..." : null,
+                authPreview: headers.Authorization
+                    ? headers.Authorization.slice(0, 18) + "..."
+                    : null,
                 bodyError: parsed,
             });
 
-            const msg = parsed?.error?.message || parsed?.message || `Strapi error: ${res.status}`;
+            const msg =
+                parsed?.error?.message ||
+                parsed?.message ||
+                `Strapi error: ${res.status}`;
+
             const err = new Error(msg);
             err.details = parsed?.error || parsed;
             err.status = res.status;
@@ -137,20 +144,14 @@ export async function GET(req) {
         const page = Math.max(1, Number(url.searchParams.get("page") || 1));
         const pageSizeRaw = Number(url.searchParams.get("pageSize") || 15);
         const pageSize = Math.min(50, Math.max(1, pageSizeRaw));
-        const q = String(url.searchParams.get("q") || "").trim();
 
-        const queryObj = {
-            status: "published",
-            sort: ["createdAt:desc"],
-            pagination: { page, pageSize },
-            populate: {
-                logo: true,
-                users_permissions_user: true,
-            },
-        };
+        const q = String(url.searchParams.get("q") || "").trim();
+        const leadStatus = String(url.searchParams.get("leadStatus") || "").trim();
+
+        const andFilters = [];
 
         if (q) {
-            queryObj.filters = {
+            andFilters.push({
                 $or: [
                     { companyName: { $containsi: q } },
                     { ownerName: { $containsi: q } },
@@ -162,17 +163,42 @@ export async function GET(req) {
                     { industriesList: { $containsi: q } },
                     { companySizeList: { $containsi: q } },
                     { statusList: { $containsi: q } },
+                    { leadStatus: { $containsi: q } },
 
-                    // relation search
                     { users_permissions_user: { username: { $containsi: q } } },
                     { users_permissions_user: { email: { $containsi: q } } },
                 ],
-            };
+            });
+        }
+
+        if (leadStatus) {
+            andFilters.push({
+                leadStatus: { $eq: leadStatus },
+            });
+        }
+
+        const queryObj = {
+            status: "published",
+            sort: ["createdAt:desc"],
+            pagination: { page, pageSize },
+            populate: {
+                logo: true,
+                users_permissions_user: true,
+            },
+        };
+
+        if (andFilters.length === 1) {
+            queryObj.filters = andFilters[0];
+        } else if (andFilters.length > 1) {
+            queryObj.filters = { $and: andFilters };
         }
 
         const query = qs.stringify(queryObj, { encodeValuesOnly: true });
 
-        const parsed = await strapiFetch(`clients?${query}`, { method: "GET", useAuth: true });
+        const parsed = await strapiFetch(`clients?${query}`, {
+            method: "GET",
+            useAuth: true,
+        });
 
         const pagination = parsed?.meta?.pagination || {};
         const data = Array.isArray(parsed?.data) ? parsed.data : [];
@@ -198,6 +224,7 @@ export async function GET(req) {
                 industriesList: c?.industriesList || "",
                 companySizeList: c?.companySizeList || "",
                 statusList: c?.statusList || "",
+                leadStatus: c?.leadStatus || "Lead",
 
                 username: user.username || "",
                 email: user.email || "",
@@ -219,7 +246,11 @@ export async function GET(req) {
         );
     } catch (err) {
         return Response.json(
-            { ok: false, error: err?.message || "Server error", details: err?.details || null },
+            {
+                ok: false,
+                error: err?.message || "Server error",
+                details: err?.details || null,
+            },
             { status: err?.status || 500 }
         );
     }

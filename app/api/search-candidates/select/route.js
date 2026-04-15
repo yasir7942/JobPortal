@@ -156,7 +156,7 @@ async function getJobByDocumentId(jobDocumentId) {
                     candidate: {
                         fields: ["documentId", "fullName", "referenceNumber"],
                     },
-                    offerLetter: true,
+
                 },
             },
         },
@@ -256,9 +256,9 @@ export async function POST(req) {
             return {
                 candidateProcessList: itemAttrs?.candidateProcessList || "",
                 candidate: getRelationId(itemAttrs?.candidate),
-                ...(getRelationId(itemAttrs?.offerLetter)
-                    ? { offerLetter: getRelationId(itemAttrs?.offerLetter) }
-                    : {}),
+                /* ...(getRelationId(itemAttrs?.offerLetter)
+                     ? { offerLetter: getRelationId(itemAttrs?.offerLetter) }
+                     : {}),  */
             };
         });
 

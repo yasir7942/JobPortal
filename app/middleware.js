@@ -29,7 +29,6 @@ function getAllowedRolesForPath(pathname) {
     if (pathname === "/staff/client") {
         return ["staff"];
     }
-
     // any child page under /staff/client/:documentId...
     if (pathname.startsWith("/staff/client/")) {
         return ["staff", "clients"];

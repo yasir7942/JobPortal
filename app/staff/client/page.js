@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import { ClipLoader } from "react-spinners";
 import useAuthClient from "@/lib/useAuthClient";
 import { useRouter } from "next/navigation";
-
+import ENUMS from "@/config/enums.json";
 
 /* ✅ Default logo fallback */
 const DEFAULT_LOGO =
@@ -20,6 +19,10 @@ const DEFAULT_LOGO =
     </text>
   </svg>
 `);
+
+const LEAD_STATUS_OPTIONS = Array.isArray(ENUMS?.LeadStatus)
+    ? ENUMS.LeadStatus
+    : ["Lead", "Active", "Rejected"];
 
 function safeImgSrc(src) {
     const s = (src || "").trim();
@@ -37,8 +40,9 @@ async function fetchJsonSafe(url) {
             `API returned non-JSON (status ${res.status}). First bytes: ${text.slice(0, 80)}`
         );
     }
-    if (!res.ok || json?.ok === false)
+    if (!res.ok || json?.ok === false) {
         throw new Error(json?.error || `Request failed (${res.status})`);
+    }
     return json;
 }
 
@@ -60,6 +64,26 @@ function StatusPill({ status }) {
     );
 }
 
+function LeadStatusPill({ status }) {
+    const value = (status || "Lead").trim();
+    const s = value.toLowerCase();
+
+    const cls =
+        s === "lead"
+            ? "border-blue-200 bg-blue-50 text-blue-700"
+            : s === "active"
+                ? "border-green-200 bg-green-50 text-green-700"
+                : s === "rejected"
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : "border-gray-200 bg-gray-50 text-gray-700";
+
+    return (
+        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${cls}`}>
+            {value}
+        </span>
+    );
+}
+
 function InfoChip({ label, value }) {
     return (
         <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
@@ -72,24 +96,26 @@ function InfoChip({ label, value }) {
 export default function ClientsPage() {
     const pageSize = 15;
     const router = useRouter();
-    const { user, role, authLoading } = useAuthClient();
-
+    const { user, role, loadingAuth } = useAuthClient();
 
     useEffect(() => {
-        if (authLoading) return; // wait until auth finishes
 
-        if (role === "clients") {
+
+        if (loadingAuth) return;
+
+        if (role?.name === "clients") {
             router.replace("/client");
-        } else if (role !== "candidates") {
+        } else if (role?.name === "candidates") {
             router.replace("/candidate");
+        } else if (role?.name === "staff") {
+            // allowed
         }
-
-    }, [role, authLoading, router]);
-
-
+    }, [user, role, loadingAuth, router]);
 
     const [search, setSearch] = useState("");
     const [debouncedQ, setDebouncedQ] = useState("");
+    const [leadStatus, setLeadStatus] = useState("");
+
     const [page, setPage] = useState(1);
 
     const [rows, setRows] = useState([]);
@@ -105,20 +131,24 @@ export default function ClientsPage() {
     const [detailError, setDetailError] = useState("");
     const [detail, setDetail] = useState(null);
 
-    // Debounce search (same as candidates)
     useEffect(() => {
         const t = setTimeout(() => setDebouncedQ(search.trim()), 350);
         return () => clearTimeout(t);
     }, [search]);
 
-    async function loadClients(nextPage = page, q = debouncedQ) {
+    async function loadClients(nextPage = page, q = debouncedQ, lead = leadStatus) {
         setLoadingTable(true);
         setTableError("");
+
         try {
-            const url = `/api/clients/list?page=${nextPage}&pageSize=${pageSize}&q=${encodeURIComponent(
-                q || ""
-            )}`;
-            const json = await fetchJsonSafe(url);
+            const params = new URLSearchParams();
+            params.set("page", String(nextPage));
+            params.set("pageSize", String(pageSize));
+            params.set("q", q || "");
+            params.set("leadStatus", lead || "");
+
+            const json = await fetchJsonSafe(`/api/clients/list?${params.toString()}`);
+
             setRows(Array.isArray(json.items) ? json.items : []);
             setPageCount(Number(json.pageCount || 1));
             setTotal(Number(json.total || 0));
@@ -132,11 +162,10 @@ export default function ClientsPage() {
         }
     }
 
-    // Load table (server-side pagination)
     useEffect(() => {
-        loadClients(page, debouncedQ);
+        loadClients(page, debouncedQ, leadStatus);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, debouncedQ]);
+    }, [page, debouncedQ, leadStatus]);
 
     function closeModal() {
         setSelected(null);
@@ -145,7 +174,6 @@ export default function ClientsPage() {
         setDetailLoading(false);
     }
 
-    // ESC to close modal
     useEffect(() => {
         if (!selected) return;
         const onKey = (e) => e.key === "Escape" && closeModal();
@@ -153,12 +181,13 @@ export default function ClientsPage() {
         return () => window.removeEventListener("keydown", onKey);
     }, [selected]);
 
-    // body scroll lock
     useEffect(() => {
         if (!selected) return;
         const prev = document.body.style.overflow;
         document.body.style.overflow = "hidden";
-        return () => (document.body.style.overflow = prev);
+        return () => {
+            document.body.style.overflow = prev;
+        };
     }, [selected]);
 
     async function openClient(row) {
@@ -168,7 +197,6 @@ export default function ClientsPage() {
         setDetailLoading(true);
 
         try {
-            // You already created getclient route earlier:
             const json = await fetchJsonSafe(`/api/clients/getclient/${row.documentId}`);
             setDetail(json);
         } catch (e) {
@@ -180,63 +208,80 @@ export default function ClientsPage() {
 
     const headerText = useMemo(() => {
         const q = (debouncedQ || "").trim();
-        if (!q) return `(${total} clients)`;
-        return `(${total} results for "${q}")`;
-    }, [debouncedQ, total]);
+        const lead = (leadStatus || "").trim();
+
+        if (!q && !lead) return `(${total} clients)`;
+        if (q && lead) return `(${total} results for "${q}" in ${lead})`;
+        if (q) return `(${total} results for "${q}")`;
+        return `(${total} ${lead} clients)`;
+    }, [debouncedQ, leadStatus, total]);
 
     return (
         <div className="min-h-screen bg-gray-50">
-
-
-            <div className="topHeading">
-                Clients
-            </div>
+            <div className="topHeading">Clients</div>
 
             <main className="mt-10 mx-auto w-[95%] lg:w-[90%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                     <header className="border-b border-gray-200 bg-white px-4 py-4 ">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between  ">
-                            <div>
-                                <div className="text-lg text-gray-900">Clients</div>
-                                <div className="text-sm text-gray-800">{headerText}</div>
-                            </div>
-
-                            <div className="flex w-full sm:w-auto items-center gap-2 sm:justify-end  ">
-                                <div className="relative w-full sm:w-lg">
-                                    <input
-                                        value={search}
-                                        onChange={(e) => {
-                                            setSearch(e.target.value);
-                                            setPage(1);
-                                        }}
-                                        placeholder="Search (company/phone/email/country/status)..."
-                                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none  focus:border-red-200 focus:ring-2 focus:ring-red-300"
-                                    />
-                                    <span className="pointer-events-none absolute right-4 top-4 -translate-y-1/2 text-gray-600 text-2xl">
-                                        ⌕
-                                    </span>
+                        <div className="flex flex-col gap-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <div className="text-lg text-gray-900">Clients</div>
+                                    <div className="text-sm text-gray-800">{headerText}</div>
                                 </div>
 
-                                <button
-                                    type="button"
-                                    onClick={() => loadClients(page, debouncedQ)}
-                                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
-                                    title="Reload from DB"
-                                >
-                                    Refresh
-                                </button>
+                                <div className="flex flex-wrap w-full sm:w-auto items-center gap-2 sm:justify-end">
+                                    <div className="relative w-full sm:w-lg">
+                                        <input
+                                            value={search}
+                                            onChange={(e) => {
+                                                setSearch(e.target.value);
+                                                setPage(1);
+                                            }}
+                                            placeholder="Search (company/phone/email/country/status)..."
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none focus:border-red-200 focus:ring-2 focus:ring-red-300"
+                                        />
+                                        <span className="pointer-events-none absolute right-4 top-4 -translate-y-1/2 text-gray-600 text-2xl">
+                                            ⌕
+                                        </span>
+                                    </div>
 
-                                <Link
-                                    href="/staff/client/new"
-                                    className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white hover:opacity-90 whitespace-nowrap"
-                                >
-                                    + Create New
-                                </Link>
+                                    <select
+                                        value={leadStatus}
+                                        onChange={(e) => {
+                                            setLeadStatus(e.target.value);
+                                            setPage(1);
+                                        }}
+                                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-red-200 focus:ring-2 focus:ring-red-300"
+                                    >
+                                        <option value="">All Lead Status</option>
+                                        {LEAD_STATUS_OPTIONS.map((item) => (
+                                            <option key={item} value={item}>
+                                                {item}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => loadClients(page, debouncedQ, leadStatus)}
+                                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                                        title="Reload from DB"
+                                    >
+                                        Refresh
+                                    </button>
+
+                                    <Link
+                                        href="/staff/client/new"
+                                        className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white hover:opacity-90 whitespace-nowrap"
+                                    >
+                                        + Create New
+                                    </Link>
+                                </div>
                             </div>
                         </div>
                     </header>
 
-                    {/* TABLE */}
                     <div className="w-full overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 border-b border-gray-200">
@@ -248,15 +293,16 @@ export default function ClientsPage() {
                                     <th className="px-3 py-2">Country</th>
                                     <th className="px-3 py-2">Industry</th>
                                     <th className="px-3 py-2">Status</th>
+                                    <th className="px-3 py-2">Lead Status</th>
                                     <th className="px-3 py-2">Account</th>
                                     <th className="px-3 py-2">Actions</th>
                                 </tr>
                             </thead>
 
                             <tbody>
-                                {loadingTable && authLoading ? (
+                                {loadingTable || loadingAuth ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
+                                        <td colSpan={10} className="px-3 py-6 text-sm text-gray-800">
                                             <div className="flex items-center gap-3">
                                                 <ClipLoader
                                                     size={25}
@@ -269,13 +315,13 @@ export default function ClientsPage() {
                                     </tr>
                                 ) : tableError ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-red-700">
+                                        <td colSpan={10} className="px-3 py-6 text-sm text-red-700">
                                             {tableError}
                                         </td>
                                     </tr>
                                 ) : rows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
+                                        <td colSpan={10} className="px-3 py-6 text-sm text-gray-800">
                                             No clients found.
                                         </td>
                                     </tr>
@@ -305,15 +351,21 @@ export default function ClientsPage() {
                                             </td>
 
                                             <td className="px-3 py-2 text-sm text-gray-800">{c.phone || "—"}</td>
+
                                             <td className="px-3 py-2 text-sm text-gray-800">
                                                 {c.countryList || "—"}
                                             </td>
+
                                             <td className="px-3 py-2 text-sm text-gray-800">
                                                 {c.industriesList || "—"}
                                             </td>
 
                                             <td className="px-3 py-2">
                                                 <StatusPill status={c.statusList} />
+                                            </td>
+
+                                            <td className="px-3 py-2">
+                                                <LeadStatusPill status={c.leadStatus || "Lead"} />
                                             </td>
 
                                             <td className="px-3 py-2 text-sm text-gray-900">
@@ -337,12 +389,33 @@ export default function ClientsPage() {
                                                     >
                                                         Edit
                                                     </Link>
+
+
+
+
                                                     <Link
-                                                        href={`/client/${c.documentId}/jobs/`}
-                                                        className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-gray-50"
+                                                        href={
+                                                            String(c?.leadStatus || "").toLowerCase() === "active"
+                                                                ? `/client/${c.documentId}/jobs/`
+                                                                : "#"
+                                                        }
+                                                        className={`rounded-lg border px-3 py-1.5 text-sm
+    ${String(c?.leadStatus || "").toLowerCase() === "active"
+                                                                ? "border-red-200 bg-white text-red-600 hover:bg-gray-50"
+                                                                : "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none"
+                                                            }`}
+                                                        aria-disabled={
+                                                            String(c?.leadStatus || "").toLowerCase() !== "active"
+                                                        }
+                                                        title={
+                                                            String(c?.leadStatus || "").toLowerCase() !== "active"
+                                                                ? "Client must be Active to view jobs"
+                                                                : ""
+                                                        }
                                                     >
                                                         Client Jobs List
                                                     </Link>
+
 
                                                 </div>
                                             </td>
@@ -353,7 +426,6 @@ export default function ClientsPage() {
                         </table>
                     </div>
 
-                    {/* pagination */}
                     <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-white px-4 py-3">
                         <div className="text-sm text-gray-800">
                             Page {page} of {pageCount}
@@ -369,6 +441,7 @@ export default function ClientsPage() {
                             >
                                 Prev
                             </button>
+
                             <button
                                 type="button"
                                 onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
@@ -381,7 +454,6 @@ export default function ClientsPage() {
                     </div>
                 </div>
 
-                {/* VIEW MODAL */}
                 {selected && (
                     <div
                         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -436,11 +508,7 @@ export default function ClientsPage() {
                                         color="#b91c1c"
                                         speedMultiplier={2}
                                     />
-                                    <div className="text-left">
-                                        Loading details...
-                                    </div>
-
-
+                                    <div className="text-left">Loading details...</div>
                                 </div>
                             ) : detailError ? (
                                 <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -471,19 +539,36 @@ export default function ClientsPage() {
                                                 </div>
 
                                                 <div className="mt-2 flex flex-wrap gap-2">
-                                                    <InfoChip label="Country:" value={detail?.formDefaults?.countryList || "—"} />
-                                                    <InfoChip label="Industry:" value={detail?.formDefaults?.industriesList || "—"} />
-                                                    <InfoChip label="Size:" value={detail?.formDefaults?.companySizeList || "—"} />
+                                                    <InfoChip
+                                                        label="Country:"
+                                                        value={detail?.formDefaults?.countryList || "—"}
+                                                    />
+                                                    <InfoChip
+                                                        label="Industry:"
+                                                        value={detail?.formDefaults?.industriesList || "—"}
+                                                    />
+                                                    <InfoChip
+                                                        label="Size:"
+                                                        value={detail?.formDefaults?.companySizeList || "—"}
+                                                    />
+                                                    <InfoChip
+                                                        label="Lead Status:"
+                                                        value={detail?.formDefaults?.leadStatus || "Lead"}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div className="sm:ml-auto">
-                                            <StatusPill status={detail?.formDefaults?.statusList || selected.statusList} />
+                                        <div className="sm:ml-auto flex flex-col gap-2 items-start sm:items-end">
+                                            <StatusPill
+                                                status={detail?.formDefaults?.statusList || selected.statusList}
+                                            />
+                                            <LeadStatusPill
+                                                status={detail?.formDefaults?.leadStatus || "Lead"}
+                                            />
                                         </div>
                                     </div>
 
-                                    {/* Details grid */}
                                     <div className="mt-4 rounded-xl border border-gray-300 p-3">
                                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                             {[
@@ -495,6 +580,7 @@ export default function ClientsPage() {
                                                 ["Industry", detail?.formDefaults?.industriesList],
                                                 ["Company Size", detail?.formDefaults?.companySizeList],
                                                 ["Status", detail?.formDefaults?.statusList],
+                                                ["Lead Status", detail?.formDefaults?.leadStatus || "Lead"],
                                                 ["Username", detail?.formDefaults?.username],
                                                 ["Email", detail?.formDefaults?.email],
                                             ].map(([k, v]) => (
@@ -521,7 +607,6 @@ export default function ClientsPage() {
                                         </div>
                                     </div>
 
-                                    {/* Contacts */}
                                     <div className="mt-4 rounded-xl border border-gray-300 p-3">
                                         <div className="text-sm text-gray-800">
                                             Contacts ({detail?.formDefaults?.contactList?.length || 0})
@@ -534,7 +619,9 @@ export default function ClientsPage() {
                                                     className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2"
                                                 >
                                                     <div className="flex-1 min-w-0">
-                                                        <div className="text-sm text-gray-800 truncate">{c.name || "—"}</div>
+                                                        <div className="text-sm text-gray-800 truncate">
+                                                            {c.name || "—"}
+                                                        </div>
                                                         <div className="text-xs text-gray-700">
                                                             {c.designation || "—"} • {c.mobile || "—"}
                                                         </div>
@@ -544,6 +631,7 @@ export default function ClientsPage() {
                                                     </div>
                                                 </div>
                                             ))}
+
                                             {(detail?.formDefaults?.contactList || []).length === 0 ? (
                                                 <div className="text-xs text-gray-500">No contacts</div>
                                             ) : null}

@@ -26,7 +26,6 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
     const name = attrs?.name ?? "";
     const url = attrs?.url ?? "";
 
-    // STRAPI_BASE_URL = http://127.0.0.1:1337/api
     const origin = String(STRAPI_BASE_URL || "").replace(/\/api\/?$/, "");
 
     const absUrl = url
@@ -45,7 +44,6 @@ function unwrapClient(parsed) {
 }
 
 function getUserFromRelation(client) {
-    // IMPORTANT: your relation field name
     const rel = client?.users_permissions_user;
     const d = rel?.data ?? rel;
     const attrs = d?.attributes ?? d;
@@ -58,7 +56,6 @@ function getUserFromRelation(client) {
 }
 
 function mapContacts(client) {
-    // repeatable component already comes as array of objects
     const list = Array.isArray(client?.contactList) ? client.contactList : [];
     return list.map((c) => ({
         name: c?.name || "",
@@ -71,7 +68,7 @@ function mapContacts(client) {
 /* ----------------------------- route ------------------------------ */
 
 export async function GET(req, { params }) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // e.g. http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
@@ -135,6 +132,7 @@ export async function GET(req, { params }) {
                 parsed?.error?.message ||
                 parsed?.message ||
                 `Strapi error: ${res.status}`;
+
             const err = new Error(msg);
             err.details = parsed?.error || parsed;
             err.status = res.status;
@@ -145,7 +143,7 @@ export async function GET(req, { params }) {
     }
 
     try {
-        const p = params ? await params : null; // ✅ await Promise (Next 15)
+        const p = params ? await params : null;
         const documentId = p?.documentId;
 
         if (!documentId) {
@@ -155,7 +153,6 @@ export async function GET(req, { params }) {
             );
         }
 
-        // Populate like getcandidate: media + relation user + component
         const query = qs.stringify(
             {
                 populate: {
@@ -186,7 +183,6 @@ export async function GET(req, { params }) {
             logo: normalizeStrapiMedia(client?.logo, STRAPI_BASE_URL),
         };
 
-        // form defaults for edit page (match your create page fields)
         const formDefaults = {
             companyName: client?.companyName || "",
             ownerName: client?.ownerName || "",
@@ -199,6 +195,7 @@ export async function GET(req, { params }) {
             industriesList: client?.industriesList || "",
             companySizeList: client?.companySizeList || "",
             statusList: client?.statusList || "",
+            leadStatus: client?.leadStatus || "Lead",
 
             shortDescription: client?.shortDescription || "",
             privateNote: client?.privateNote || "",
@@ -206,11 +203,9 @@ export async function GET(req, { params }) {
             logo: null,
             contactList: mapContacts(client),
 
-            // account (from related user)
             username: user?.username || "",
             email: user?.email || "",
 
-            // edit page keeps these empty
             password: "",
             retypePassword: "",
         };

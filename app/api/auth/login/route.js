@@ -189,7 +189,7 @@ export async function POST(req) {
             name: fullProfile.fullName || fullProfile.companyName || "",
             image: result.profile.image?.url || result.profile.profileImage?.url || result.profile.logo?.url || "",
             documentId: fullProfile?.documentId ?? null,
-            type: normalizeRole(profileType) ?? null,
+            type: role.name ?? profileType,
             username: fullProfile.users_permissions_user?.username || "",
             email: fullProfile.users_permissions_user?.email || "",
             role,

@@ -32,10 +32,9 @@ function getFirstIncomingFile(incoming, keys) {
 /* ----------------------------- route ------------------------------ */
 
 export async function POST(req) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // http://127.0.0.1:1337/api
+    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
 
-    // optional override (same pattern as candidate route)
     const FORCE_ROLE_ID = process.env.STRAPI_CLIENT_ROLE_ID;
 
     if (!STRAPI_BASE_URL || !RAW_TOKEN) {
@@ -151,6 +150,7 @@ export async function POST(req) {
             industriesList: payload.industriesList || "",
             companySizeList: payload.companySizeList || "",
             statusList: payload.statusList || "",
+            leadStatus: payload.leadStatus || "Lead",
 
             shortDescription: payload.shortDescription || "",
             privateNote: payload.privateNote || "",
@@ -159,7 +159,6 @@ export async function POST(req) {
 
             type: "client",
 
-            // ✅ link client to created user
             users_permissions_user: userId,
         };
     }
@@ -176,14 +175,13 @@ export async function POST(req) {
 
         const first = Array.isArray(uploaded) ? uploaded[0] : null;
         if (!first?.id) throw new Error("Upload succeeded but no file id returned.");
-        return first; // {id, url, ...}
+        return first;
     }
 
     try {
         const incoming = await req.formData();
         console.log("Incoming keys:", [...new Set([...incoming.keys()])]);
 
-        /* ------------------------ parse JSON part ------------------------ */
         const dataStr = incoming.get("data");
         if (!dataStr) {
             return Response.json({ ok: false, error: "Missing data field" }, { status: 400 });
@@ -196,7 +194,6 @@ export async function POST(req) {
             return Response.json({ ok: false, error: "Invalid JSON in data field" }, { status: 400 });
         }
 
-        /* ---------------------- 1) register user ------------------------ */
         const username = (payload?.username || "").trim();
         const email = (payload?.email || "").trim();
         const password = String(payload?.password || "");
@@ -219,7 +216,6 @@ export async function POST(req) {
         const userId = registerRes?.user?.id;
         if (!userId) throw new Error("Register succeeded but user id not returned.");
 
-        // optional: update role/confirmed
         try {
             await strapiFetch(`users/${userId}`, {
                 method: "PUT",
@@ -230,7 +226,6 @@ export async function POST(req) {
             console.log("WARN: Could not update user confirmed/role:", e?.message);
         }
 
-        /* ---------------------- 2) create client ------------------------ */
         const clientData = buildClientData(payload, userId);
 
         let createdClient;
@@ -256,7 +251,6 @@ export async function POST(req) {
             );
         }
 
-        /* ---------------- 3) upload logo then PUT ------------------- */
         try {
             const logoFile = getFirstIncomingFile(incoming, ["logo", "files.logo"]);
             if (logoFile) {
@@ -273,7 +267,6 @@ export async function POST(req) {
             throw e;
         }
 
-        /* ---------------------- 4) return populate ----------------------- */
         const populated = await strapiFetch(
             `clients/${clientDocumentId}?status=published&populate=*`,
             { method: "GET", useAuth: true }
