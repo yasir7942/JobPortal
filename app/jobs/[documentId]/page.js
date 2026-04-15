@@ -3,9 +3,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
-import Header from "@/app/components/layouts/client/Header";
 import ENUMS from "@/config/enums.json";
 import { IoClose } from "react-icons/io5";
+import { ClipLoader } from "react-spinners";
+import { useRouter } from "next/navigation";
 
 const DUMMY_PDF = "";
 
@@ -877,16 +878,30 @@ export default function JobCandidatesPage() {
         );
     };
 
+    const router = useRouter();
+    async function AddNewCandidates(clientDocumentId, jobDocumentId) {
+        if (!jobDocumentId || !clientDocumentId) {
+            console.log("Missing IDs", { clientDocumentId, jobDocumentId });
+            return;
+        }
+
+        router.push(
+            `/search-candidates?clientDocumentId=${clientDocumentId}&jobDocumentId=${jobDocumentId}`
+        );
+    }
+
     const isInShortlisted = candidateForPopup?.currentProcess === "shortlisted";
     const isInInterview = candidateForPopup?.currentProcess === "interview";
     const isInHired = candidateForPopup?.currentProcess === "hired";
 
+
+
     return (
         <>
-            <Header />
+
 
             <div className="mt-10 flex flex-col gap-3 border-b border-gray-300 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-3xl font-bold text-red-700 sm:text-5xl">Job Details</div>
+                <div className="topHeading border-0">Job Details</div>
 
                 <div className="flex flex-wrap items-center gap-2">
                     {[
@@ -909,14 +924,24 @@ export default function JobCandidatesPage() {
             <div className="mx-auto w-full space-y-8 p-4">
                 <div className="rounded-2xl border border-gray-200 p-4 sm:p-6">
                     {jobLoading ? (
-                        <div className="text-sm text-gray-600">Loading job...</div>
+                        <div className="flex justify-start items-center gap-3 text-sm text-gray-600">
+                            <ClipLoader
+                                size={25}
+                                color="#b91c1c"
+                                speedMultiplier={1}
+                            />
+                            <div className="text-left">
+                                Loading job & candidates...
+                            </div>
+
+                        </div>
                     ) : jobErr ? (
                         <div className="text-sm text-red-700">{jobErr}</div>
                     ) : (
                         <>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0">
-                                    <h1 className="truncate text-2xl font-bold text-red-700 sm:text-3xl">
+                                    <h1 className="truncate text-xl font-bold text-red-700 sm:text-3xl">
                                         {job?.title || "—"}{" "}
                                         <span className="ml-2 pr-5 text-base text-gray-800">{job?.referenceNo || "—"}</span>
                                     </h1>
@@ -973,9 +998,18 @@ export default function JobCandidatesPage() {
                     )}
                 </div>
 
-                <div ref={suggestedRef} className="mt-10 scroll-mt-24">
-                    <div className="flex items-center justify-between gap-2">
-                        <h2 className="text-2xl font-bold text-red-600">
+
+                <button
+                    onClick={() => AddNewCandidates(job?.client?.documentId, job?.documentId)}
+
+                    className="w-full sm:w-auto rounded-md bg-red-700 text-white px-5 py-2 text-sm hover:opacity-90 disabled:opacity-40"
+                >
+                    Add Candidates
+                </button>
+
+                <div ref={suggestedRef} className="mt-10 scroll-mt-24 ">
+                    <div className="flex items-center justify-between gap-2 border-b pb-3 border-gray-200">
+                        <h2 className="text-xl font-bold text-red-600 ">
                             Suggested Candidates <span className="font-medium text-gray-500">({suggestedCandidates.length})</span>
                         </h2>
 
@@ -999,10 +1033,12 @@ export default function JobCandidatesPage() {
                     )}
                 </div>
 
-                <div ref={shortlistedRef} className="scroll-mt-24">
-                    <h2 className="text-2xl font-bold text-red-600">
-                        Shortlisted Candidates <span className="font-medium text-gray-500">({shortlistedCandidates.length})</span>
-                    </h2>
+                <div ref={shortlistedRef} className="mt-10 scroll-mt-24  ">
+                    <div className="flex items-center justify-between gap-2 border-b pb-3 border-gray-200 ">
+                        <h2 className="text-xl font-bold text-red-600">
+                            Shortlisted Candidates <span className="font-medium text-gray-500">({shortlistedCandidates.length})</span>
+                        </h2>
+                    </div>
 
                     {shortlistedCandidates.length === 0 ? (
                         <div className="mt-3 text-sm text-gray-600">No shortlisted candidates.</div>
@@ -1013,12 +1049,13 @@ export default function JobCandidatesPage() {
                     )}
                 </div>
 
-                <div ref={requestedRef} className="scroll-mt-24">
-                    <h2 className="text-2xl font-bold text-red-600">
-                        Requested Interviews{" "}
-                        <span className="font-medium text-gray-500">({requestedInterviewCandidates.length})</span>
-                    </h2>
-
+                <div ref={requestedRef} className="mt-10 scroll-mt-24  ">
+                    <div className="flex items-center justify-between gap-2 border-b pb-3 border-gray-200 ">
+                        <h2 className="text-xl font-bold text-red-600">
+                            Requested Interviews{" "}
+                            <span className="font-medium text-gray-500">({requestedInterviewCandidates.length})</span>
+                        </h2>
+                    </div>
                     {requestedInterviewCandidates.length === 0 ? (
                         <div className="mt-3 text-sm text-gray-600">No interview requests yet.</div>
                     ) : (
@@ -1028,11 +1065,13 @@ export default function JobCandidatesPage() {
                     )}
                 </div>
 
-                <div ref={hiredRef} className="scroll-mt-24">
-                    <h2 className="text-2xl font-bold text-red-600">
-                        Hired Candidates <span className="font-medium text-gray-500">({hiredCandidates.length})</span>
-                    </h2>
 
+                <div ref={hiredRef} className="mt-10 scroll-mt-24  ">
+                    <div className="flex items-center justify-between gap-2 border-b pb-3 border-gray-200">
+                        <h2 className="text-xl font-bold text-red-600">
+                            Hired Candidates <span className="font-medium text-gray-500">({hiredCandidates.length})</span>
+                        </h2>
+                    </div>
                     {hiredCandidates.length === 0 ? (
                         <div className="mt-3 text-sm text-gray-600">No hired candidates yet.</div>
                     ) : (

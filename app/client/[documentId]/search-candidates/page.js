@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/app/components/layouts/client/Header";
+import { ClipLoader } from "react-spinners";
+
 
 const DUMMY_PDF =
     "";
@@ -764,7 +766,8 @@ export default function SearchCandidatesPage() {
                             <div className="mt-2 rounded-xl border border-gray-200 overflow-hidden relative">
                                 {cvLoading && (
                                     <div className="absolute inset-0 flex items-center justify-center bg-white">
-                                        <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin" />
+                                        <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin hidden" />
+                                        <ClipLoader size={35} color="#b91c1c" speedMultiplier={2} />
                                     </div>
                                 )}
 

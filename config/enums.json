@@ -8,6 +8,7 @@
   "isProfileVerified": ["Documents Pending", "Verified", "On Hold", "Blacklisted"],
    "companySize": ["Micro", "Small", "Medium", "Large"],
     "candidateProcess": ["Suggested Candidate", "Shortlisted Candidate", "Requested Interview", "Hired Candidate"],
+    "LeadStatus": ["Lead", "Active", "Rejected"],
   "yesNo": [
     { "label": "Yes", "value": true },
     { "label": "No", "value": false }

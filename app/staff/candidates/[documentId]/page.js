@@ -26,6 +26,7 @@ import {
     isValidDateNotFuture,
     normalizeIdArray
 } from "@/app/staff/ui/CandidateFormUI";
+import { ClipLoader } from "react-spinners";
 
 /* ------------------------------------------------------------------ */
 /* Helpers */
@@ -380,19 +381,26 @@ export default function EditCandidatePage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-50">
-                <Header />
-                <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
-                    <div className="rounded-2xl border border-gray-200 bg-white p-6">Loading candidate...</div>
-                </main>
+            <div className="flex justify-start items-center gap-3 text-sm text-gray-600">
+                <ClipLoader
+                    size={25}
+                    color="#b91c1c"
+
+                />
+                <div className="text-left">
+                    Loading filters...
+                </div>
+
             </div>
         );
     }
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <Header />
 
+            <div className="topHeading">
+                Update Candidates
+            </div>
             <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                     <header className="border-b border-gray-200 bg-white px-4 py-4">

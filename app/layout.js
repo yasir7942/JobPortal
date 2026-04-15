@@ -1,21 +1,27 @@
 
 
-import { Geist, Geist_Mono } from "next/font/google";
+
 import "./globals.css";
 import "../app/globals.css";
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+import { Open_Sans } from "next/font/google";
+import AppShell from "@/app/components/layouts/AppShell";
+
+const openSans = Open_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "600", "700"],
+});
 
 export const metadata = {
-  title: "Job Portal",
+  title: "MatchWorker Job Portal",
   description: "Job Portal by Match Workers",
 };
 
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+    <html lang="en" >
+      <body className={openSans.className}>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Header from "@/app/components/layouts/staff/Header";
+import ClipLoader from "react-spinners/ClipLoader";
+
 
 import ENUMS from "../../../../config/enums.json";
 import ContactFieldArray from "@/app/staff/ui/ContactFieldArray";
@@ -23,6 +24,10 @@ import {
     normalizePhone,
     fileExtOk,
 } from "@/app/staff/ui/CandidateFormUI";
+import useAuthClient from "@/lib/useAuthClient";
+
+
+
 
 /* ------------------------------------------------------------------ */
 /* Schema (EDIT) */
@@ -159,6 +164,11 @@ export default function EditClientPage() {
     const [submitMsg, setSubmitMsg] = useState("");
     const [loading, setLoading] = useState(true);
 
+    const { user, role, loadingAuth } = useAuthClient();
+
+
+
+
     const [existingMedia, setExistingMedia] = useState({
         logo: { url: "", name: "", id: null },
     });
@@ -275,38 +285,73 @@ export default function EditClientPage() {
         }
     };
 
-    if (loading) {
+    if (loading && loadingAuth) {
         return (
             <div className="min-h-screen bg-gray-50">
-                <Header />
+
                 <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
-                    <div className="rounded-2xl border border-gray-200 bg-white p-6">
-                        Loading client...
+                    <div className="flex justify-start items-center gap-3 rounded-2xl border border-gray-200 bg-white p-6">
+
+                        <ClipLoader
+                            size={25}
+                            color="#b91c1c"
+                            speedMultiplier={1}
+                        />
+                        <div className="text-left">
+                            Loading Client...
+                        </div>
+
                     </div>
                 </main>
             </div>
         );
     }
 
+
+    console.log("User:", user);
+
     return (
         <div className="min-h-screen bg-gray-50">
-            <Header />
+
+
+
+
+            <div className="topHeading">
+
+                {["client", "clients"].includes(user.role?.name?.toLowerCase()) ? (
+                    <span>Update {user.name}</span>
+                ) : (
+                    <span> Update Client</span>
+                )}
+            </div>
+
 
             <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                     <header className="border-b border-gray-200 bg-white px-4 py-4">
                         <div className="flex items-center justify-between gap-2">
                             <div>
-                                <div className="text-lg text-gray-900 font-semibold">Edit Client</div>
+                                <div className="text-lg text-gray-900 font-semibold">
+                                    {["client", "clients"].includes(user.role?.name?.toLowerCase()) ? (
+                                        <span>{user.name} Data</span>
+                                    ) : (
+                                        <span>Client Data</span>
+                                    )}
+
+                                </div>
                                 <div className="text-sm text-gray-600">Update client details.</div>
                             </div>
 
-                            <Link
-                                href="/staff/client"
-                                className="rounded-xl border border-gray-400 bg-white px-6 py-2 text-base text-gray-700 hover:bg-gray-50"
-                            >
-                                Back
-                            </Link>
+
+
+                            {(user.role?.name === "staff") &&
+                                <Link
+                                    href="/staff/client"
+                                    className="rounded-xl border border-gray-400 bg-white px-6 py-2 text-base text-gray-700 hover:bg-gray-50"
+                                >
+                                    Back
+                                </Link>}
+
                         </div>
                     </header>
 

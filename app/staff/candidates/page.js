@@ -1,8 +1,11 @@
 "use client";
 
+import useAuthClient from "@/lib/useAuthClient";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Header from "@/app/components/layouts/staff/Header";
+import { ClipLoader } from "react-spinners";
+
 
 /* ✅ Default profile image (fallback) */
 const DEFAULT_AVATAR =
@@ -102,6 +105,24 @@ function isVerifiedValue(v) {
 
 export default function CandidatesPage() {
     const pageSize = 15;
+
+
+
+    const router = useRouter();
+    const { user, role, authLoading } = useAuthClient();
+
+
+    useEffect(() => {
+        if (authLoading) return; // wait until auth finishes
+
+        if (role === "clients" || role === "staff") {
+            // do nothing
+        } else if (role === "candidates") {
+            router.replace("/candidate");
+        }
+
+    }, [role, authLoading, router]);
+
 
     const [search, setSearch] = useState("");
     const [debouncedQ, setDebouncedQ] = useState("");
@@ -226,9 +247,9 @@ export default function CandidatesPage() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <Header />
 
-            <div className="mt-2 p-6 font-bold text-2xl sm:text-3xl text-red-700 border-b border-gray-300">
+
+            <div className="topHeading">
                 Candidates
             </div>
 
@@ -238,7 +259,7 @@ export default function CandidatesPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <div className="text-lg text-gray-900">Candidates</div>
-                                <div className="text-sm text-gray-800">Connected to Strapi • {headerText}</div>
+                                <div className="text-sm text-gray-800">Number Of Candidates • {headerText}</div>
                             </div>
 
                             <div className="flex w-full sm:w-auto items-center gap-2 sm:justify-end">
@@ -292,11 +313,19 @@ export default function CandidatesPage() {
                             </thead>
 
                             <tbody>
-                                {loadingTable ? (
+                                {loadingTable && authLoading ? (
                                     <tr>
                                         <td colSpan={10} className="px-3 py-6 text-sm text-gray-800">
-                                            Loading candidates...
+                                            <div className="flex items-center justify-center gap-3">
+                                                <ClipLoader
+                                                    size={25}
+                                                    color="#b91c1c"
+
+                                                />
+                                                <span>Loading candidates...</span>
+                                            </div>
                                         </td>
+
                                     </tr>
                                 ) : tableError ? (
                                     <tr>
@@ -411,7 +440,7 @@ export default function CandidatesPage() {
                         <div className="relative w-full sm:max-w-6xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                    <div className="text-lg sm:text-xl truncate">Candidate Profile</div>
+                                    <div className="text-lg sm:text-xl text-red-700 truncate">Candidate Profile</div>
                                     <div className="text-sm text-gray-800 truncate">
                                         Reference No: {selectedCandidate.referenceNumber}
                                     </div>

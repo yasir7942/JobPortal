@@ -4,6 +4,16 @@
   --background: #ffffff;
   --foreground: #171717;
 }
+
+
+@layer components {
+  .topHeading {
+    @apply mt-2 md:mt-5  p-6 font-bold text-2xl sm:text-3xl text-red-700 border-b border-gray-300;
+  }
+
+  
+}
+
 /*
 @theme inline {
   --color-background: var(--background);

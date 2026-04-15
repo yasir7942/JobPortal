@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Header from "@/app/components/layouts/client/Header";
+
 import { useRouter } from "next/navigation";
 
 // same UI components you use in Candidate form (theme)
@@ -10,6 +10,7 @@ import { Field, Input, Textarea, Select, fetchJsonSafe } from "@/app/staff/ui/Ca
 
 // enums.json
 import ENUMS from "../../../../config/enums.json";
+import { ClipLoader } from "react-spinners";
 
 /* -------------------- helpers -------------------- */
 
@@ -64,6 +65,22 @@ function StatusPill({ status }) {
 /* -------------------- page -------------------- */
 
 export default function ClientJobsPage() {
+
+    /*
+        const session = getSession();
+    
+        if (!session?.isLoggedIn) {
+            redirect("/login?next=/jobs");
+        }
+    
+        if (!["staff", "clients"].includes(session.role)) {
+            if (session.role === "candidates") {
+                redirect("/candidate");
+            }
+            redirect("/login");
+        }
+    */
+
     const routeParams = useParams();
     const clientDocumentId = routeParams?.documentId;
 
@@ -348,17 +365,23 @@ export default function ClientJobsPage() {
         router.push(`/jobs/${jobDocumentId}`);
     }
 
+    async function AddNewCandidates(clientDocumentId, jobDocumentId) {
+        if (!jobDocumentId) return;
+
+        router.push(`/search-candidates/?clientDocumentId=${clientDocumentId}&jobDocumentId=${jobDocumentId}`);
+    }
+
     const headerText = useMemo(() => {
         return `(${total} ${showClosed ? "Jobs" : "Open Jobs"})`;
     }, [total, showClosed]);
 
     return (
         <>
-            <Header />
+
 
             {/* Top Title + Right Menu */}
-            <div className="mt-10 px-6 py-5 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="font-bold text-2xl sm:text-5xl text-red-700">Jobs</div>
+            <div className="mt-0 md:mt-3 px-6 py-5 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="topHeading border-0">Jobs</div>
 
                 <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-2 text-sm text-gray-800 select-none">
@@ -402,8 +425,15 @@ export default function ClientJobsPage() {
                 </div>
 
                 {loading ? (
-                    <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-800">
-                        Loading jobs...
+                    <div className=" flex justify-start items-center gap-3  rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-800">
+                        <ClipLoader
+                            size={25}
+                            color="#b91c1c"
+                            speedMultiplier={1}
+                        />
+                        <div className="text-left">
+                            Loading Job Candidates...
+                        </div>
                     </div>
                 ) : err ? (
                     <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
@@ -464,12 +494,12 @@ export default function ClientJobsPage() {
                                     </div>
 
                                     {/* ✅ RIGHT actions: full width on mobile, align right on desktop */}
-                                    <div className="w-full sm:w-lg flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-end ">
-                                        <div className="flex items-center gap-2">
+                                    <div className="w-full sm:w-2xl flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-end   ">
+                                        <div className="flex items-center gap-2  not-first:not-last:">
                                             <StatusPill status={j.statusList} />
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:flex sm:items-center gap-2  ">
+                                        <div className="grid grid-cols-1 sm:flex sm:items-center gap-2    ">
                                             <button
                                                 onClick={() => openViewJob(j)}
                                                 className="w-full sm:w-auto rounded-md border border-gray-300 text-gray-700 px-3 py-2 text-sm hover:bg-gray-50"
@@ -483,6 +513,14 @@ export default function ClientJobsPage() {
                                                 className="w-full sm:w-auto rounded-md border border-blue-600 text-blue-700 px-3 py-2 text-sm hover:bg-blue-100"
                                             >
                                                 Update
+                                            </button>
+
+                                            <button
+                                                onClick={() => AddNewCandidates(clientDocumentId, j.documentId)}
+                                                disabled={String(j.statusList || "").toLowerCase() === "closed"}
+                                                className="w-full sm:w-auto rounded-md bg-red-700 text-white px-5 py-2 text-sm hover:opacity-90 disabled:opacity-40"
+                                            >
+                                                Add Candidates
                                             </button>
 
                                             <button
@@ -548,9 +586,9 @@ export default function ClientJobsPage() {
                     <div className="relative w-full sm:max-w-4xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-lg sm:text-xl font-bold truncate">Create Job</div>
-                                <div className="text-sm text-gray-600 truncate">
-                                    Client auto-selected: {items[0]?.companyName || "—"}
+                                <div className="text-lg sm:text-xl font-bold truncate text-red-700">Create Job</div>
+                                <div className="text-sm text-gray-700 truncate ">
+                                    <span className="font-bold">Client:</span> {items[0]?.companyName || "—"}
                                 </div>
                             </div>
 

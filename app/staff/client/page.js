@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Header from "@/app/components/layouts/staff/Header";
+
+import { ClipLoader } from "react-spinners";
+import useAuthClient from "@/lib/useAuthClient";
+import { useRouter } from "next/navigation";
+
 
 /* ✅ Default logo fallback */
 const DEFAULT_LOGO =
@@ -67,6 +71,22 @@ function InfoChip({ label, value }) {
 
 export default function ClientsPage() {
     const pageSize = 15;
+    const router = useRouter();
+    const { user, role, authLoading } = useAuthClient();
+
+
+    useEffect(() => {
+        if (authLoading) return; // wait until auth finishes
+
+        if (role === "clients") {
+            router.replace("/client");
+        } else if (role !== "candidates") {
+            router.replace("/candidate");
+        }
+
+    }, [role, authLoading, router]);
+
+
 
     const [search, setSearch] = useState("");
     const [debouncedQ, setDebouncedQ] = useState("");
@@ -166,9 +186,9 @@ export default function ClientsPage() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <Header />
 
-            <div className="mt-2 p-6 font-bold text-2xl sm:text-3xl text-red-700 border-b border-gray-300">
+
+            <div className="topHeading">
                 Clients
             </div>
 
@@ -192,7 +212,7 @@ export default function ClientsPage() {
                                         placeholder="Search (company/phone/email/country/status)..."
                                         className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-10 text-sm text-gray-800 outline-none  focus:border-red-200 focus:ring-2 focus:ring-red-300"
                                     />
-                                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 text-2xl">
+                                    <span className="pointer-events-none absolute right-4 top-4 -translate-y-1/2 text-gray-600 text-2xl">
                                         ⌕
                                     </span>
                                 </div>
@@ -234,10 +254,17 @@ export default function ClientsPage() {
                             </thead>
 
                             <tbody>
-                                {loadingTable ? (
+                                {loadingTable && authLoading ? (
                                     <tr>
                                         <td colSpan={9} className="px-3 py-6 text-sm text-gray-800">
-                                            Loading clients...
+                                            <div className="flex items-center gap-3">
+                                                <ClipLoader
+                                                    size={25}
+                                                    color="#b91c1c"
+                                                    speedMultiplier={2}
+                                                />
+                                                <span>Loading clients...</span>
+                                            </div>
                                         </td>
                                     </tr>
                                 ) : tableError ? (
@@ -311,11 +338,12 @@ export default function ClientsPage() {
                                                         Edit
                                                     </Link>
                                                     <Link
-                                                        href={`/client/${c.documentId}/dashboard`}
+                                                        href={`/client/${c.documentId}/jobs/`}
                                                         className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-gray-50"
                                                     >
-                                                        Client Dashboard
+                                                        Client Jobs List
                                                     </Link>
+
                                                 </div>
                                             </td>
                                         </tr>
@@ -402,8 +430,17 @@ export default function ClientsPage() {
                             </div>
 
                             {detailLoading ? (
-                                <div className="mt-4 rounded-xl border border-gray-300 p-4 text-sm text-gray-700">
-                                    Loading details...
+                                <div className="flex items-center gap-3 mt-4 rounded-xl border border-gray-300 p-4 text-sm text-gray-700">
+                                    <ClipLoader
+                                        size={25}
+                                        color="#b91c1c"
+                                        speedMultiplier={2}
+                                    />
+                                    <div className="text-left">
+                                        Loading details...
+                                    </div>
+
+
                                 </div>
                             ) : detailError ? (
                                 <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">

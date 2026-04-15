@@ -101,6 +101,7 @@ export async function GET(_req, ctx) {
         const queryObj = {
             status: "published",
             populate: {
+                client: true,
                 assignCandidatesToJob: {
                     populate: {
                         candidate: {
@@ -133,7 +134,12 @@ export async function GET(_req, ctx) {
             cache: "no-store",
         });
 
+
+
         const body = await readBodySafe(res);
+
+
+
 
         if (!res.ok) {
             return Response.json(
@@ -158,6 +164,7 @@ export async function GET(_req, ctx) {
             industeryList: jobData?.industeryList || "",
             vacanciesNo: jobData?.vacanciesNo || "",
             experience: jobData?.experience || "",
+            client: jobData?.client || "",
         };
 
         const rows = Array.isArray(jobData?.assignCandidatesToJob) ? jobData.assignCandidatesToJob : [];

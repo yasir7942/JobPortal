@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import Header from "@/app/components/layouts/client/Header";
+import { ClipLoader } from "react-spinners";
+
 
 // ✅ Full country list (search + select)
 const COUNTRIES = [
@@ -308,7 +309,7 @@ export default function ClientProfilePage() {
 
     return (
         <>
-            <Header />
+
 
             <div className="mt-10 px-6 py-5 border-b border-gray-300">
                 <div className="font-bold text-3xl sm:text-5xl text-red-700">
@@ -323,7 +324,9 @@ export default function ClientProfilePage() {
                 {/* Loading */}
                 {loading ? (
                     <div className="border border-gray-200 rounded-2xl p-6">
-                        <div className="text-sm text-gray-600">Loading profile...</div>
+                        <div className="text-sm text-gray-600">Loading profile...
+                            <ClipLoader size={35} color="#b91c1c" speedMultiplier={2} />
+                        </div>
                     </div>
                 ) : (
                     <>
