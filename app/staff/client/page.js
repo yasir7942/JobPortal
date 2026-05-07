@@ -216,6 +216,8 @@ export default function ClientsPage() {
         return `(${total} ${lead} clients)`;
     }, [debouncedQ, leadStatus, total]);
 
+
+
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="topHeading">Clients</div>
@@ -395,21 +397,25 @@ export default function ClientsPage() {
 
                                                     <Link
                                                         href={
-                                                            String(c?.leadStatus || "").toLowerCase() === "active"
-                                                                ? `/client/${c.documentId}/jobs/`
-                                                                : "#"
+                                                            !String(c?.leadStatus || "").toLowerCase() ||
+                                                                String(c?.leadStatus || "").toLowerCase() === "rejected"
+                                                                ? "#"
+                                                                : `/client/${c.documentId}/jobs/`
                                                         }
                                                         className={`rounded-lg border px-3 py-1.5 text-sm
-    ${String(c?.leadStatus || "").toLowerCase() === "active"
-                                                                ? "border-red-200 bg-white text-red-600 hover:bg-gray-50"
-                                                                : "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none"
+    ${!String(c?.leadStatus || "").toLowerCase() ||
+                                                                String(c?.leadStatus || "").toLowerCase() === "rejected"
+                                                                ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none"
+                                                                : "border-red-200 bg-white text-red-600 hover:bg-gray-50"
                                                             }`}
                                                         aria-disabled={
-                                                            String(c?.leadStatus || "").toLowerCase() !== "active"
+                                                            !String(c?.leadStatus || "").toLowerCase() ||
+                                                            String(c?.leadStatus || "").toLowerCase() === "rejected"
                                                         }
                                                         title={
-                                                            String(c?.leadStatus || "").toLowerCase() !== "active"
-                                                                ? "Client must be Active to view jobs"
+                                                            !String(c?.leadStatus || "").toLowerCase() ||
+                                                                String(c?.leadStatus || "").toLowerCase() === "rejected"
+                                                                ? "Client must not be empty or rejected to view jobs"
                                                                 : ""
                                                         }
                                                     >
@@ -551,22 +557,27 @@ export default function ClientsPage() {
                                                         label="Size:"
                                                         value={detail?.formDefaults?.companySizeList || "—"}
                                                     />
-                                                    <InfoChip
-                                                        label="Lead Status:"
-                                                        value={detail?.formDefaults?.leadStatus || "Lead"}
-                                                    />
+
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div className="sm:ml-auto flex flex-col gap-2 items-start sm:items-end">
-                                            <StatusPill
-                                                status={detail?.formDefaults?.statusList || selected.statusList}
-                                            />
-                                            <LeadStatusPill
-                                                status={detail?.formDefaults?.leadStatus || "Lead"}
-                                            />
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-semibold text-gray-600">Status:</span>
+                                                <StatusPill
+                                                    status={detail?.formDefaults?.statusList || selected.statusList}
+                                                />
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-semibold text-gray-600">Lead Status:</span>
+                                                <LeadStatusPill
+                                                    status={detail?.formDefaults?.leadStatus || selected.leadStatus || "Lead"}
+                                                />
+                                            </div>
                                         </div>
+
                                     </div>
 
                                     <div className="mt-4 rounded-xl border border-gray-300 p-3">

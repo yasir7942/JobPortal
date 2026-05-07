@@ -35,6 +35,12 @@ function isValidLink(url) {
     return url;
 }
 
+function proxyMediaUrl(url) {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    return `/api/media/proxy?url=${encodeURIComponent(s)}`;
+}
+
 async function fetchJsonSafe(url) {
     const res = await fetch(url, { cache: "no-store" });
     const text = await res.text();
@@ -116,6 +122,8 @@ export default function CandidatesPage() {
 
     const router = useRouter();
     const { user, role, authLoading } = useAuthClient();
+    const isStaff = (role?.name || user?.role?.name) === "staff";
+
 
 
     useEffect(() => {
@@ -291,12 +299,14 @@ export default function CandidatesPage() {
                                     Refresh
                                 </button>
 
-                                <Link
-                                    href="/staff/candidates/new"
-                                    className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white hover:opacity-90 whitespace-nowrap"
-                                >
-                                    + Create New
-                                </Link>
+                                {isStaff && (
+                                    <Link
+                                        href="/staff/candidates/new"
+                                        className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white hover:opacity-90 whitespace-nowrap"
+                                    >
+                                        + Create New
+                                    </Link>
+                                )}
                             </div>
                         </div>
                     </header>
@@ -390,12 +400,14 @@ export default function CandidatesPage() {
                                                         View
                                                     </button>
 
-                                                    <Link
-                                                        href={`/staff/candidates/${c.documentId}/`}
-                                                        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                                                    >
-                                                        Edit
-                                                    </Link>
+                                                    {isStaff && (
+                                                        <Link
+                                                            href={`/staff/candidates/${c.documentId}/`}
+                                                            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                                                        >
+                                                            Edit
+                                                        </Link>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -453,13 +465,15 @@ export default function CandidatesPage() {
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    <Link
-                                        href={`/staff/candidates/${selectedCandidate.documentId}`}
-                                        className="rounded-lg bg-red-700 text-white px-3 py-2 text-sm hover:opacity-90"
-                                        onClick={closeCandidate}
-                                    >
-                                        Edit Candidate
-                                    </Link>
+                                    {isStaff && (
+                                        <Link
+                                            href={`/staff/candidates/${selectedCandidate.documentId}`}
+                                            className="rounded-lg bg-red-700 text-white px-3 py-2 text-sm hover:opacity-90"
+                                            onClick={closeCandidate}
+                                        >
+                                            Edit Candidate
+                                        </Link>
+                                    )}
 
                                     <button
                                         onClick={closeCandidate}
@@ -546,17 +560,27 @@ export default function CandidatesPage() {
                                                 ))}
                                             </div>
 
-                                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <div className={`mt-3 grid grid-cols-1 gap-2 ${isStaff ? "md:grid-cols-2" : ""}`}>
                                                 <div className="text-sm">
                                                     <div className="text-gray-700">Short Summary</div>
-                                                    <div className="text-gray-800">{detail?.formDefaults?.shortSummary || "—"}</div>
+                                                    <div className="text-gray-800">
+                                                        {detail?.formDefaults?.shortSummary || "—"}
+                                                    </div>
                                                 </div>
-                                                <div className="text-sm">
-                                                    <div className="text-gray-700">Private Notes</div>
-                                                    <div className="text-gray-800">{detail?.formDefaults?.privateNotes || "—"}</div>
-                                                </div>
+
+                                                {isStaff && (
+                                                    <div className="text-sm">
+                                                        <div className="text-gray-700">Private Notes</div>
+                                                        <div className="text-gray-800">
+                                                            {detail?.formDefaults?.privateNotes || "—"}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
+
+
                                         </div>
+
 
                                         <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
                                             <div className="rounded-xl border border-gray-400 p-3">
@@ -682,7 +706,7 @@ export default function CandidatesPage() {
                                                             ) : (
                                                                 <div className="h-[65vh] sm:h-[78vh]">
                                                                     <iframe
-                                                                        src={detail.existingMedia.CV.url}
+                                                                        src={proxyMediaUrl(detail.existingMedia.CV.url)}
                                                                         title="CV PDF"
                                                                         className="w-full h-full"
                                                                         onLoad={() => {
@@ -701,7 +725,7 @@ export default function CandidatesPage() {
                                                     ) : (
                                                         <div className="p-3 bg-gray-50">
                                                             <img
-                                                                src={detail.existingMedia.CV.url}
+                                                                src={proxyMediaUrl(detail.existingMedia.CV.url)}
                                                                 alt="CV"
                                                                 className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-400 bg-white"
                                                             />

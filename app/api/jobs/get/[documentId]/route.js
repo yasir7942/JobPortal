@@ -25,8 +25,8 @@ export async function GET(_req, { params }) {
             return Response.json({ ok: false, error: "Missing documentId" }, { status: 400 });
         }
 
-        const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL || process.env.STRAPI_URL; // e.g. http://127.0.0.1:1337/api
-        const STRAPI_API_TOKEN = process.env.STRAPI_API_TOKEN;
+        const STRAPI_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim().replace(/\/$/, "");
+        const STRAPI_API_TOKEN = process.env.STRAPI_TOKEN || "";
 
         if (!STRAPI_BASE_URL) {
             return Response.json({ ok: false, error: "Missing STRAPI_BASE_URL" }, { status: 500 });

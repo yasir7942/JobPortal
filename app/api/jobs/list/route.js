@@ -47,6 +47,22 @@ function normalizeStrapiJob(job) {
         createdAt: j?.createdAt || "",
         updatedAt: j?.updatedAt || "",
         publishedAt: j?.publishedAt || "",
+
+        // ✅ IMPORTANT: send pipeline data to frontend
+        assignCandidatesToJob: Array.isArray(j?.assignCandidatesToJob)
+            ? j.assignCandidatesToJob.map((item) => ({
+                id: item?.id ?? null,
+                candidateProcessList: item?.candidateProcessList || "",
+                candidate: item?.candidate
+                    ? {
+                        id: item.candidate?.id ?? null,
+                        documentId: item.candidate?.documentId || "",
+                        fullName: item.candidate?.fullName || "",
+                        referenceNumber: item.candidate?.referenceNumber || "",
+                    }
+                    : null,
+            }))
+            : [],
     };
 }
 
@@ -153,6 +169,9 @@ export async function GET(req) {
                         client: {
                             fields: ["companyName", "documentId"],
                         },
+
+                        // ✅ IMPORTANT: populate pipeline component
+                        assignCandidatesToJob: true,
                     },
                 },
             },

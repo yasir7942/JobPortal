@@ -1,36 +1,28 @@
 export const runtime = "nodejs";
 
 import qs from "qs";
+import { cookies } from "next/headers";
+import { USER_COOKIE_NAME } from "@/lib/auth";
+
+/* ---------------- BASE URLS ---------------- */
 
 function strapiBase() {
-    return (
-        process.env.STRAPI_URL ||
-        process.env.NEXT_PUBLIC_STRAPI_URL ||
-        "http://127.0.0.1:1337"
-    ).replace(/\/$/, "");
+    return (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim().replace(/\/$/, "");
 }
 
 function strapiPublicBase() {
-    return (
-        process.env.STRAPI_PUBLIC_URL ||
-        process.env.NEXT_PUBLIC_STRAPI_PUBLIC_URL ||
-        process.env.NEXT_PUBLIC_STRAPI_URL ||
-        process.env.STRAPI_URL ||
-        "http://127.0.0.1:1337"
-    ).replace(/\/$/, "");
+    return (process.env.NEXT_PUBLIC_STRAPI_PUBLIC_URL || "").trim().replace(/\/$/, "");
 }
 
 function strapiToken() {
-    return (
-        process.env.STRAPI_API_TOKEN ||
-        process.env.STRAPI_TOKEN ||
-        process.env.STRAPI_ADMIN_TOKEN ||
-        ""
-    );
+    return process.env.STRAPI_TOKEN || "";
 }
+
+/* ---------------- HELPERS ---------------- */
 
 async function readBodySafe(res) {
     const text = await res.text();
+
     try {
         return text ? JSON.parse(text) : null;
     } catch {
@@ -38,60 +30,50 @@ async function readBodySafe(res) {
     }
 }
 
-function toProcessString(action) {
-    const v = String(action || "").trim().toLowerCase();
-
-    if (v === "shortlisted" || v === "shortlisted candidate") {
-        return "Shortlisted Candidate";
-    }
-
-    if (
-        v === "interview" ||
-        v === "requested interview" ||
-        v === "request interview"
-    ) {
-        return "Requested Interview";
-    }
-
-    if (v === "hired" || v === "hired candidate") {
-        return "Hired Candidate";
-    }
-
-    return "Suggested Candidate";
-}
-
 function relationId(value) {
     if (!value) return null;
 
     const v = value?.data ?? value;
 
-    if (typeof v === "object" && v !== null) {
-        return v.id ?? null;
-    }
-
+    if (typeof v === "object" && v !== null) return v.id ?? null;
     if (typeof v === "number") return v;
+
     return null;
 }
 
-function sanitizeAssignmentRow(row) {
-    return {
-        candidate: relationId(row?.candidate),
-        candidateProcessList: row?.candidateProcessList || "Suggested Candidate",
-        requestedInterviewDate: row?.requestedInterviewDate || null,
-        offerLetter: relationId(row?.offerLetter) || null,
-    };
+function normalize(row) {
+    return row?.attributes
+        ? {
+            id: row.id,
+            documentId: row.documentId,
+            ...row.attributes,
+        }
+        : row || {};
 }
 
-function sanitizeAssignmentRows(rows) {
-    return (Array.isArray(rows) ? rows : [])
-        .map(sanitizeAssignmentRow)
-        .filter((row) => row?.candidate);
+function getDocId(value) {
+    const v = normalize(value);
+    return v?.documentId || "";
+}
+
+function getChatDocIds(chats) {
+    if (!Array.isArray(chats)) return [];
+
+    return chats
+        .map((chat) => getDocId(chat))
+        .filter(Boolean);
+}
+
+function uniqueStrings(items) {
+    return [...new Set((items || []).map(String).filter(Boolean))];
 }
 
 function absoluteMediaUrl(url) {
-    if (!url) return "";
-    if (String(url).startsWith("http")) return url;
-    return `${strapiPublicBase()}${String(url).startsWith("/") ? "" : "/"}${url}`;
+    const s = String(url || "").trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+
+    return `${strapiPublicBase()}${s.startsWith("/") ? "" : "/"}${s}`;
 }
 
 function normalizeOfferLetterMedia(media) {
@@ -111,10 +93,136 @@ function normalizeOfferLetterMedia(media) {
     };
 }
 
-async function getCandidateIdByDocumentId(base, token, candidateDocumentId) {
-    const url = `${base}/api/candidates/${candidateDocumentId}?status=published`;
+function toProcessString(action) {
+    const v = String(action || "").trim().toLowerCase();
 
-    const res = await fetch(url, {
+    if (v === "suggested" || v === "suggested candidate") {
+        return "Suggested Candidate";
+    }
+
+    if (v === "shortlisted" || v === "shortlisted candidate") {
+        return "Shortlisted Candidate";
+    }
+
+    if (
+        v === "interview" ||
+        v === "requested interview" ||
+        v === "request interview" ||
+        v === "requested interview candidate"
+    ) {
+        return "Requested Interview";
+    }
+
+    if (v === "hired" || v === "hired candidate") {
+        return "Hired Candidate";
+    }
+
+    if (v === "immigration") {
+        return "Immigration";
+    }
+
+    if (v === "placed") {
+        return "Placed";
+    }
+
+    return "Suggested Candidate";
+}
+
+function isHiredPipelineStatus(value) {
+    const v = String(value || "").trim();
+
+    return (
+        v === "Hired Candidate" ||
+        v === "Immigration" ||
+        v === "Placed"
+    );
+}
+
+function sanitizeAssignmentRow(row, patch = {}) {
+    const oldChatDocIds = getChatDocIds(row?.pipline_chats);
+    const patchChatDocIds = Array.isArray(patch?.pipline_chats)
+        ? patch.pipline_chats
+        : oldChatDocIds;
+
+    return {
+        candidate: relationId(row?.candidate),
+        candidateProcessList:
+            patch.candidateProcessList !== undefined
+                ? patch.candidateProcessList
+                : row?.candidateProcessList || "Suggested Candidate",
+        requestedInterviewDate:
+            patch.requestedInterviewDate !== undefined
+                ? patch.requestedInterviewDate
+                : row?.requestedInterviewDate || null,
+        offerLetter:
+            patch.offerLetter !== undefined
+                ? patch.offerLetter
+                : relationId(row?.offerLetter) || null,
+        pipline_chats: {
+            connect: uniqueStrings(patchChatDocIds),
+        },
+    };
+}
+
+async function getCurrentUser() {
+    const store = await cookies();
+    const raw = store.get(USER_COOKIE_NAME)?.value || "";
+
+    try {
+        return raw ? JSON.parse(decodeURIComponent(raw)) : null;
+    } catch {
+        try {
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }
+}
+
+function getPersonName(user) {
+    return user?.name || user?.username || user?.email || "System";
+}
+
+function getUserRoleName(user) {
+    return String(
+        user?.type ||
+        user?.role?.name ||
+        user?.roleRaw?.name ||
+        user?.role ||
+        ""
+    )
+        .trim()
+        .toLowerCase();
+}
+
+function getPersonRelation(user) {
+    const role = getUserRoleName(user);
+
+    if (!user?.documentId) return {};
+
+    if (role === "staff" || role === "staffs") {
+        return {
+            staff: {
+                connect: [user.documentId],
+            },
+        };
+    }
+
+    if (role === "client" || role === "clients") {
+        return {
+            client: {
+                connect: [user.documentId],
+            },
+        };
+    }
+
+    return {};
+}
+
+/* ---------------- API CALLS ---------------- */
+
+async function getCandidateId(base, token, documentId) {
+    const res = await fetch(`${base}/candidates/${documentId}?status=published`, {
         headers: {
             Authorization: `Bearer ${token}`,
         },
@@ -124,7 +232,7 @@ async function getCandidateIdByDocumentId(base, token, candidateDocumentId) {
     const json = await readBodySafe(res);
 
     if (!res.ok || json?.error) {
-        throw new Error(json?.error?.message || "Failed to fetch candidate");
+        throw new Error(json?.error?.message || "Candidate fetch failed");
     }
 
     const candidateId = json?.data?.id;
@@ -136,27 +244,52 @@ async function getCandidateIdByDocumentId(base, token, candidateDocumentId) {
     return candidateId;
 }
 
+async function getCandidateJobStatus(base, token, candidateDocumentId) {
+    const res = await fetch(
+        `${base}/candidates/${candidateDocumentId}?status=published&fields[0]=jobStatus`,
+        {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+        }
+    );
+
+    const json = await readBodySafe(res);
+
+    if (!res.ok || json?.error) {
+        console.error("CANDIDATE JOB STATUS FETCH RESPONSE", json);
+        throw new Error(json?.error?.message || "Failed to fetch candidate jobStatus");
+    }
+
+    return String(json?.data?.jobStatus || "").trim();
+}
+
 async function getJobAssignments(base, token, jobDocumentId) {
-    const queryObj = {
-        status: "published",
-        populate: {
-            assignCandidatesToJob: {
-                populate: {
-                    candidate: {
-                        fields: ["id"],
-                    },
-                    offerLetter: {
-                        fields: ["id", "name", "url"],
+    const query = qs.stringify(
+        {
+            status: "published",
+            populate: {
+                assignCandidatesToJob: {
+                    populate: {
+                        candidate: {
+                            fields: ["id", "documentId"],
+                        },
+                        offerLetter: {
+                            fields: ["id", "name", "url"],
+                        },
+                        pipline_chats: {
+                            fields: ["documentId"],
+                        },
                     },
                 },
             },
         },
-    };
+        { encodeValuesOnly: true }
+    );
 
-    const query = qs.stringify(queryObj, { encodeValuesOnly: true });
-    const url = `${base}/api/jobs/${jobDocumentId}?${query}`;
-
-    const res = await fetch(url, {
+    const res = await fetch(`${base}/jobs/${jobDocumentId}?${query}`, {
         headers: {
             Authorization: `Bearer ${token}`,
         },
@@ -166,65 +299,63 @@ async function getJobAssignments(base, token, jobDocumentId) {
     const json = await readBodySafe(res);
 
     if (!res.ok || json?.error) {
-        throw new Error(json?.error?.message || "Failed to fetch job");
+        throw new Error(json?.error?.message || "Job fetch failed");
     }
 
     const job = json?.data || null;
 
-    const rows = Array.isArray(job?.assignCandidatesToJob)
+    return Array.isArray(job?.assignCandidatesToJob)
         ? job.assignCandidatesToJob
         : Array.isArray(job?.attributes?.assignCandidatesToJob)
             ? job.attributes.assignCandidatesToJob
             : [];
-
-    return rows;
 }
 
-async function updateJobAssignments(base, token, jobDocumentId, assignments) {
+async function updateJobAssignments(base, token, jobDocumentId, rows) {
     const payload = {
         data: {
-            assignCandidatesToJob: assignments,
+            assignCandidatesToJob: rows,
         },
     };
 
-    const url = `${base}/api/jobs/${jobDocumentId}?status=published`;
-
-    const res = await fetch(url, {
+    const res = await fetch(`${base}/jobs/${jobDocumentId}?status=published`, {
         method: "PUT",
         headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
+        cache: "no-store",
     });
 
     const json = await readBodySafe(res);
 
     if (!res.ok || json?.error) {
-        console.error("PUT PAYLOAD", JSON.stringify(payload, null, 2));
-        console.error("PUT RESPONSE", json);
-        throw new Error(json?.error?.message || "Failed to update job");
+        console.error("UPDATE JOB PAYLOAD", JSON.stringify(payload, null, 2));
+        console.error("UPDATE JOB RESPONSE", json);
+        throw new Error(json?.error?.message || "Update job failed");
     }
 
     return json;
 }
 
-async function uploadOfferLetterToStrapi(base, token, file) {
+async function uploadOfferLetter(base, token, file) {
     const fd = new FormData();
     fd.append("files", file, file?.name || "offer-letter");
 
-    const res = await fetch(`${base}/api/upload`, {
+    const res = await fetch(`${base}/upload`, {
         method: "POST",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: fd,
+        cache: "no-store",
     });
 
     const json = await readBodySafe(res);
 
     if (!res.ok || json?.error) {
-        throw new Error(json?.error?.message || "Failed to upload offer letter");
+        throw new Error(json?.error?.message || "Upload failed");
     }
 
     const uploaded = Array.isArray(json) ? json[0] : null;
@@ -247,41 +378,251 @@ async function updateCandidateJobStatus(base, token, candidateDocumentId, nextJo
         },
     };
 
-    const url = `${base}/api/candidates/${candidateDocumentId}?status=published`;
-
-    const res = await fetch(url, {
+    const res = await fetch(`${base}/candidates/${candidateDocumentId}?status=published`, {
         method: "PUT",
         headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
+        cache: "no-store",
     });
 
     const json = await readBodySafe(res);
 
     if (!res.ok || json?.error) {
-        console.error("CANDIDATE JOB STATUS PUT PAYLOAD", JSON.stringify(payload, null, 2));
-        console.error("CANDIDATE JOB STATUS PUT RESPONSE", json);
+        console.error("CANDIDATE STATUS PAYLOAD", JSON.stringify(payload, null, 2));
+        console.error("CANDIDATE STATUS RESPONSE", json);
         throw new Error(json?.error?.message || "Failed to update candidate jobStatus");
     }
 
     return json;
 }
 
+async function updateCandidateJobStatusToAvailableOnlyIfOldHired(
+    base,
+    token,
+    candidateDocumentId
+) {
+    const oldJobStatus = await getCandidateJobStatus(base, token, candidateDocumentId);
+
+    if (oldJobStatus.toLowerCase() !== "hired") {
+        return {
+            updated: false,
+            oldJobStatus,
+            nextJobStatus: null,
+        };
+    }
+
+    await updateCandidateJobStatus(base, token, candidateDocumentId, "Available");
+
+    return {
+        updated: true,
+        oldJobStatus,
+        nextJobStatus: "Available",
+    };
+}
+
+async function createSystemChat({
+    base,
+    token,
+    message,
+    user,
+    jobDocumentId,
+    candidateDocumentId,
+}) {
+    const personRelation = getPersonRelation(user);
+
+    const payload = {
+        message,
+        private: false,
+        isSystemGenerated: true,
+        personName: getPersonName(user),
+        jobDocumentId: String(jobDocumentId || ""),
+        candidateDocumentId: String(candidateDocumentId || ""),
+        ...personRelation,
+    };
+
+    const res = await fetch(`${base}/pipline-chats?status=published`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            data: payload,
+        }),
+        cache: "no-store",
+    });
+
+    const json = await readBodySafe(res);
+
+    if (!res.ok || json?.error) {
+        console.error("CREATE SYSTEM CHAT PAYLOAD", JSON.stringify(payload, null, 2));
+        console.error("CREATE SYSTEM CHAT RESPONSE", json);
+        throw new Error(json?.error?.message || "Failed to create system record");
+    }
+
+    return normalize(json?.data);
+}
+
+/* ---------------- PIPELINE CHAT DELETE HELPERS ---------------- */
+
+async function findPipelineChatsByJobAndCandidate({
+    base,
+    token,
+    jobDocumentId,
+    candidateDocumentId,
+}) {
+    const all = [];
+    let page = 1;
+    const pageSize = 100;
+
+    while (true) {
+        const query = qs.stringify(
+            {
+                status: "published",
+                filters: {
+                    jobDocumentId: {
+                        $eq: String(jobDocumentId || ""),
+                    },
+                    candidateDocumentId: {
+                        $eq: String(candidateDocumentId || ""),
+                    },
+                },
+                fields: ["documentId"],
+                pagination: {
+                    page,
+                    pageSize,
+                },
+            },
+            { encodeValuesOnly: true }
+        );
+
+        const res = await fetch(`${base}/pipline-chats?${query}`, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+        });
+
+        const json = await readBodySafe(res);
+
+        if (!res.ok || json?.error) {
+            console.error("FIND PIPELINE CHATS RESPONSE", json);
+            throw new Error(json?.error?.message || "Failed to find pipeline chat history");
+        }
+
+        const rows = Array.isArray(json?.data) ? json.data.map(normalize) : [];
+        all.push(...rows);
+
+        const pageCount = Number(json?.meta?.pagination?.pageCount || 1);
+
+        if (page >= pageCount) break;
+
+        page += 1;
+    }
+
+    return uniqueStrings(all.map((row) => row.documentId));
+}
+
+async function deletePipelineChat(base, token, chatDocumentId) {
+    if (!chatDocumentId) return { ok: false, skipped: true };
+
+    const res = await fetch(
+        `${base}/pipline-chats/${encodeURIComponent(chatDocumentId)}?status=published`,
+        {
+            method: "DELETE",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+        }
+    );
+
+    const json = await readBodySafe(res);
+
+    if (!res.ok && res.status !== 404) {
+        console.error("DELETE PIPELINE CHAT RESPONSE", json);
+        throw new Error(json?.error?.message || "Failed to delete pipeline chat history");
+    }
+
+    return { ok: true, status: res.status };
+}
+
+async function deletePipelineChats(base, token, chatDocumentIds) {
+    const ids = uniqueStrings(chatDocumentIds);
+
+    let deleted = 0;
+    let failed = 0;
+
+    for (const id of ids) {
+        try {
+            await deletePipelineChat(base, token, id);
+            deleted += 1;
+        } catch (e) {
+            failed += 1;
+            console.error("Failed to delete pipeline chat:", id, e);
+        }
+    }
+
+    return {
+        requested: ids.length,
+        deleted,
+        failed,
+    };
+}
+
+async function deletePipelineChatsForCurrentJobCandidate({
+    base,
+    token,
+    jobDocumentId,
+    candidateDocumentId,
+    linkedChatIds = [],
+}) {
+    const chatIdsByFields = await findPipelineChatsByJobAndCandidate({
+        base,
+        token,
+        jobDocumentId,
+        candidateDocumentId,
+    });
+
+    const allChatIds = uniqueStrings([
+        ...linkedChatIds,
+        ...chatIdsByFields,
+    ]);
+
+    return await deletePipelineChats(base, token, allChatIds);
+}
+
+function appendChatDocIdToRow(row, chatDocumentId) {
+    const oldChatDocIds = getChatDocIds(row?.pipline_chats);
+    return uniqueStrings([...oldChatDocIds, chatDocumentId]);
+}
+
+/* ---------------- GET ---------------- */
+
 export async function GET(req) {
     try {
-        const token = strapiToken();
         const base = strapiBase();
+        const token = strapiToken();
+
+        if (!base) {
+            return Response.json(
+                { ok: false, error: "Missing NEXT_PUBLIC_API_BASE_URL env" },
+                { status: 500 }
+            );
+        }
 
         if (!token) {
             return Response.json(
-                { ok: false, error: "Missing STRAPI token env" },
+                { ok: false, error: "Missing STRAPI_TOKEN env" },
                 { status: 500 }
             );
         }
 
         const { searchParams } = new URL(req.url);
+
         const jobDocumentId = String(searchParams.get("jobDocumentId") || "").trim();
         const candidateDocumentId = String(searchParams.get("candidateDocumentId") || "").trim();
 
@@ -292,10 +633,10 @@ export async function GET(req) {
             );
         }
 
-        const candidateId = await getCandidateIdByDocumentId(base, token, candidateDocumentId);
-        const rawRows = await getJobAssignments(base, token, jobDocumentId);
+        const candidateId = await getCandidateId(base, token, candidateDocumentId);
+        const rows = await getJobAssignments(base, token, jobDocumentId);
 
-        const matched = (Array.isArray(rawRows) ? rawRows : []).find((row) => {
+        const matched = rows.find((row) => {
             const rowCandidateId = relationId(row?.candidate);
             return String(rowCandidateId) === String(candidateId);
         });
@@ -314,14 +655,24 @@ export async function GET(req) {
     }
 }
 
+/* ---------------- POST ---------------- */
+
 export async function POST(req) {
     try {
-        const token = strapiToken();
         const base = strapiBase();
+        const token = strapiToken();
+        const user = await getCurrentUser();
+
+        if (!base) {
+            return Response.json(
+                { ok: false, error: "Missing NEXT_PUBLIC_API_BASE_URL env" },
+                { status: 500 }
+            );
+        }
 
         if (!token) {
             return Response.json(
-                { ok: false, error: "Missing STRAPI token env" },
+                { ok: false, error: "Missing STRAPI_TOKEN env" },
                 { status: 500 }
             );
         }
@@ -332,23 +683,18 @@ export async function POST(req) {
         let candidateDocumentId = "";
         let action = "";
         let uploadedOfferLetter = null;
+        let removeChatHistory = false;
 
         if (contentType.includes("multipart/form-data")) {
             const form = await req.formData();
 
+            action = String(form.get("action") || "").trim();
             jobDocumentId = String(form.get("jobDocumentId") || "").trim();
             candidateDocumentId = String(form.get("candidateDocumentId") || "").trim();
-            action = String(form.get("action") || "").trim();
+            removeChatHistory =
+                String(form.get("removeChatHistory") || "").toLowerCase() === "true";
 
-            if (!jobDocumentId || !candidateDocumentId || !action) {
-                return Response.json(
-                    {
-                        ok: false,
-                        error: "jobDocumentId, candidateDocumentId and action are required",
-                    },
-                    { status: 400 }
-                );
-            }
+
 
             if (action !== "uploadOfferLetter") {
                 return Response.json(
@@ -358,6 +704,7 @@ export async function POST(req) {
             }
 
             const file = form.get("file");
+
             if (!file || typeof file === "string") {
                 return Response.json(
                     { ok: false, error: "Offer letter file is required" },
@@ -365,165 +712,318 @@ export async function POST(req) {
                 );
             }
 
-            uploadedOfferLetter = await uploadOfferLetterToStrapi(base, token, file);
+            uploadedOfferLetter = await uploadOfferLetter(base, token, file);
         } else {
             const body = await req.json();
 
+            action = String(body?.action || "").trim();
             jobDocumentId = String(body?.jobDocumentId || "").trim();
             candidateDocumentId = String(body?.candidateDocumentId || "").trim();
-            action = String(body?.action || "").trim();
+            removeChatHistory = Boolean(body?.removeChatHistory);
+        }
 
-            if (!jobDocumentId || !action) {
-                return Response.json(
-                    {
-                        ok: false,
-                        error: "jobDocumentId and action are required",
-                    },
-                    { status: 400 }
-                );
-            }
+        if (!jobDocumentId || !action) {
+            return Response.json(
+                { ok: false, error: "jobDocumentId and action are required" },
+                { status: 400 }
+            );
         }
 
         const rawRows = await getJobAssignments(base, token, jobDocumentId);
-        const cleanRows = sanitizeAssignmentRows(rawRows);
 
-        if (!cleanRows.length) {
+        if (!rawRows.length) {
             return Response.json(
                 { ok: false, error: "No assignCandidatesToJob rows found" },
                 { status: 404 }
             );
         }
 
+        /* ---------------- CLEAR SUGGESTED ---------------- */
+
         if (action === "clearSuggestedCandidates") {
-            const updatedRows = cleanRows.filter(
-                (row) => String(row?.candidateProcessList || "") !== "Suggested Candidate"
+            const suggestedRows = rawRows.filter(
+                (row) => String(row?.candidateProcessList || "") === "Suggested Candidate"
             );
 
+            const suggestedCandidateDocumentIds = uniqueStrings(
+                suggestedRows
+                    .map((row) => getDocId(row?.candidate))
+                    .filter(Boolean)
+            );
+
+            const linkedSuggestedChatIds = uniqueStrings(
+                suggestedRows.flatMap((row) => getChatDocIds(row?.pipline_chats))
+            );
+
+            const updatedRows = rawRows
+                .filter(
+                    (row) =>
+                        String(row?.candidateProcessList || "") !== "Suggested Candidate"
+                )
+                .map((row) => sanitizeAssignmentRow(row));
+
             await updateJobAssignments(base, token, jobDocumentId, updatedRows);
+
+            let deletedHistory = {
+                requested: 0,
+                deleted: 0,
+                failed: 0,
+                candidates: suggestedCandidateDocumentIds.length,
+            };
+
+            const linkedDeleteResult = await deletePipelineChats(
+                base,
+                token,
+                linkedSuggestedChatIds
+            );
+
+            deletedHistory.requested += linkedDeleteResult.requested;
+            deletedHistory.deleted += linkedDeleteResult.deleted;
+            deletedHistory.failed += linkedDeleteResult.failed;
+
+            for (const candidateDocId of suggestedCandidateDocumentIds) {
+                const result = await deletePipelineChatsForCurrentJobCandidate({
+                    base,
+                    token,
+                    jobDocumentId,
+                    candidateDocumentId: candidateDocId,
+                    linkedChatIds: [],
+                });
+
+                deletedHistory.requested += result.requested;
+                deletedHistory.deleted += result.deleted;
+                deletedHistory.failed += result.failed;
+            }
 
             return Response.json({
                 ok: true,
                 action,
+                removedSuggestedCandidates: suggestedRows.length,
+                removedRecordHistory: true,
+                deletedHistory,
             });
         }
 
         if (!candidateDocumentId) {
             return Response.json(
-                {
-                    ok: false,
-                    error: "candidateDocumentId is required",
-                },
+                { ok: false, error: "candidateDocumentId is required" },
                 { status: 400 }
             );
         }
 
-        const candidateId = await getCandidateIdByDocumentId(base, token, candidateDocumentId);
+        const candidateId = await getCandidateId(base, token, candidateDocumentId);
+
+        const targetRawRow = rawRows.find((row) => {
+            const rowCandidateId = relationId(row?.candidate);
+            return String(rowCandidateId) === String(candidateId);
+        });
+
+        if (!targetRawRow) {
+            return Response.json(
+                { ok: false, error: "Candidate not found in assignCandidatesToJob" },
+                { status: 404 }
+            );
+        }
+
+        /* ---------------- REMOVE CANDIDATE ---------------- */
 
         if (action === "removeCandidate") {
-            const targetRow = cleanRows.find(
-                (row) => String(row?.candidate) === String(candidateId)
-            );
+            const linkedChatIds = getChatDocIds(targetRawRow?.pipline_chats);
 
-            const wasHired =
-                String(targetRow?.candidateProcessList || "") === "Hired Candidate";
+            let systemChat = null;
 
-            const updatedRows = cleanRows.filter(
-                (row) => String(row?.candidate) !== String(candidateId)
-            );
+            if (!removeChatHistory) {
+                systemChat = await createSystemChat({
+                    base,
+                    token,
+                    message: `Candidate removed from job pipeline. Previous status: ${targetRawRow?.candidateProcessList || "—"
+                        }`,
+                    user,
+                    jobDocumentId,
+                    candidateDocumentId,
+                });
+            }
+
+            const updatedRows = rawRows
+                .filter((row) => {
+                    const rowCandidateId = relationId(row?.candidate);
+                    return String(rowCandidateId) !== String(candidateId);
+                })
+                .map((row) => sanitizeAssignmentRow(row));
 
             await updateJobAssignments(base, token, jobDocumentId, updatedRows);
 
-            if (wasHired) {
-                await updateCandidateJobStatus(base, token, candidateDocumentId, "Available");
-            }
+            const deletedHistory = removeChatHistory
+                ? await deletePipelineChatsForCurrentJobCandidate({
+                    base,
+                    token,
+                    jobDocumentId,
+                    candidateDocumentId,
+                    linkedChatIds,
+                })
+                : null;
+
+            const candidateJobStatusResult =
+                await updateCandidateJobStatusToAvailableOnlyIfOldHired(
+                    base,
+                    token,
+                    candidateDocumentId
+                );
 
             return Response.json({
                 ok: true,
                 action,
                 candidateId,
-                candidateJobStatusUpdatedTo: wasHired ? "Available" : null,
+                systemChat,
+                removeChatHistory,
+                deletedHistory,
+                candidateOldJobStatus: candidateJobStatusResult.oldJobStatus,
+                candidateJobStatusUpdatedTo: candidateJobStatusResult.updated
+                    ? candidateJobStatusResult.nextJobStatus
+                    : null,
             });
         }
 
-        let found = false;
+        /* ---------------- UPDATE PIPELINE / OFFER LETTER ---------------- */
+
+        let previousProcess = targetRawRow?.candidateProcessList || "";
         let resultProcess = "";
         let resultOfferLetter = null;
-        let previousProcess = "";
         let nextProcessForCandidate = "";
+        let systemChat = null;
+        let targetPatch = {};
 
-        const updatedRows = cleanRows.map((row) => {
-            if (String(row.candidate) === String(candidateId)) {
-                found = true;
-                previousProcess = row.candidateProcessList || "";
+        if (action === "uploadOfferLetter") {
+            resultProcess = previousProcess || "Hired Candidate";
+            resultOfferLetter = uploadedOfferLetter;
 
-                if (action === "uploadOfferLetter") {
-                    resultProcess = row.candidateProcessList || "Hired Candidate";
-                    resultOfferLetter = uploadedOfferLetter;
+            const oldOffer = normalizeOfferLetterMedia(targetRawRow?.offerLetter);
 
-                    return {
-                        ...row,
-                        offerLetter: uploadedOfferLetter?.id || null,
-                    };
-                }
+            systemChat = await createSystemChat({
+                base,
+                token,
+                message: oldOffer?.url
+                    ? `Offer letter updated. New file: ${uploadedOfferLetter?.name || "Offer Letter"
+                    }`
+                    : `Offer letter uploaded. File: ${uploadedOfferLetter?.name || "Offer Letter"
+                    }`,
+                user,
+                jobDocumentId,
+                candidateDocumentId,
+            });
 
-                if (action === "removeOfferLetter") {
-                    resultProcess = row.candidateProcessList || "";
-                    resultOfferLetter = null;
+            targetPatch = {
+                offerLetter: uploadedOfferLetter?.id || null,
+                pipline_chats: appendChatDocIdToRow(
+                    targetRawRow,
+                    systemChat?.documentId
+                ),
+            };
+        } else if (action === "removeOfferLetter") {
+            resultProcess = previousProcess || "";
+            resultOfferLetter = null;
 
-                    return {
-                        ...row,
-                        offerLetter: null,
-                    };
-                }
+            systemChat = await createSystemChat({
+                base,
+                token,
+                message: "Offer letter removed.",
+                user,
+                jobDocumentId,
+                candidateDocumentId,
+            });
 
-                const nextProcess = toProcessString(action);
-                resultProcess = nextProcess;
-                resultOfferLetter = row.offerLetter || null;
-                nextProcessForCandidate = nextProcess;
+            targetPatch = {
+                offerLetter: null,
+                pipline_chats: appendChatDocIdToRow(
+                    targetRawRow,
+                    systemChat?.documentId
+                ),
+            };
+        } else {
+            const nextProcess = toProcessString(action);
 
-                return {
-                    ...row,
-                    candidateProcessList: nextProcess,
-                };
+            resultProcess = nextProcess;
+            nextProcessForCandidate = nextProcess;
+            resultOfferLetter = targetRawRow?.offerLetter
+                ? normalizeOfferLetterMedia(targetRawRow.offerLetter)
+                : null;
+
+            systemChat = await createSystemChat({
+                base,
+                token,
+                message: `Updated pipeline status from ${previousProcess || "—"
+                    } to ${nextProcess}`,
+                user,
+                jobDocumentId,
+                candidateDocumentId,
+            });
+
+            targetPatch = {
+                candidateProcessList: nextProcess,
+                pipline_chats: appendChatDocIdToRow(
+                    targetRawRow,
+                    systemChat?.documentId
+                ),
+            };
+        }
+
+        const updatedRows = rawRows.map((row) => {
+            const rowCandidateId = relationId(row?.candidate);
+
+            if (String(rowCandidateId) !== String(candidateId)) {
+                return sanitizeAssignmentRow(row);
             }
 
-            return row;
+            return sanitizeAssignmentRow(row, targetPatch);
         });
-
-        if (!found) {
-            return Response.json(
-                {
-                    ok: false,
-                    error: "Candidate not found in assignCandidatesToJob",
-                },
-                { status: 404 }
-            );
-        }
 
         await updateJobAssignments(base, token, jobDocumentId, updatedRows);
 
-        if (nextProcessForCandidate === "Hired Candidate") {
-            await updateCandidateJobStatus(base, token, candidateDocumentId, "Hired");
+        /* ---------------- CANDIDATE JOB STATUS RULE ---------------- */
+
+        const isNextHiredPipeline = isHiredPipelineStatus(nextProcessForCandidate);
+        const isPreviousHiredPipeline = isHiredPipelineStatus(previousProcess);
+
+        let candidateJobStatusUpdatedTo = null;
+
+        if (isNextHiredPipeline) {
+            await updateCandidateJobStatus(
+                base,
+                token,
+                candidateDocumentId,
+                "Hired"
+            );
+            candidateJobStatusUpdatedTo = "Hired";
         } else if (
-            previousProcess === "Hired Candidate" &&
+            isPreviousHiredPipeline &&
             nextProcessForCandidate &&
-            nextProcessForCandidate !== "Hired Candidate"
+            !isNextHiredPipeline
         ) {
-            await updateCandidateJobStatus(base, token, candidateDocumentId, "Available");
+            const candidateJobStatus = await getCandidateJobStatus(
+                base,
+                token,
+                candidateDocumentId
+            );
+
+            if (candidateJobStatus.toLowerCase() === "hired") {
+                await updateCandidateJobStatus(
+                    base,
+                    token,
+                    candidateDocumentId,
+                    "Available"
+                );
+                candidateJobStatusUpdatedTo = "Available";
+            }
         }
 
         return Response.json({
             ok: true,
+            action,
             candidateId,
             candidateProcessList: resultProcess,
             offerLetter: resultOfferLetter,
-            candidateJobStatusUpdatedTo:
-                nextProcessForCandidate === "Hired Candidate"
-                    ? "Hired"
-                    : previousProcess === "Hired Candidate" &&
-                        nextProcessForCandidate !== "Hired Candidate"
-                        ? "Available"
-                        : null,
+            systemChat,
+            candidateJobStatusUpdatedTo,
         });
     } catch (e) {
         return Response.json(

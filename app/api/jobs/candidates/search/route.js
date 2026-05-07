@@ -8,6 +8,14 @@ function joinUrl(base, path) {
     return `${b}/${p}`;
 }
 
+
+function strapiPublicBase() {
+    return (process.env.NEXT_PUBLIC_STRAPI_PUBLIC_URL || "")
+        .trim()
+        .replace(/\/$/, "");
+}
+
+
 async function readBodySafe(res) {
     const text = await res.text();
     try {
@@ -18,8 +26,8 @@ async function readBodySafe(res) {
 }
 
 async function strapiFetch(path, { method = "GET", body, useAuth = true } = {}) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL || "http://127.0.0.1:1337/api";
-    const STRAPI_TOKEN = process.env.STRAPI_TOKEN;
+    const STRAPI_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim().replace(/\/$/, "");
+    const STRAPI_TOKEN = process.env.STRAPI_TOKEN || "";
 
     const url = joinUrl(STRAPI_BASE_URL, path);
     const headers = { "Content-Type": "application/json" };
@@ -44,13 +52,20 @@ async function strapiFetch(path, { method = "GET", body, useAuth = true } = {}) 
 }
 
 function normalizeStrapiMedia(media) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL || "http://127.0.0.1:1337/api";
-    const origin = String(STRAPI_BASE_URL).replace(/\/api\/?$/, "");
+    const base = strapiPublicBase();
 
+    // handle both formats (media.data or media)
     const m = media?.data ?? media;
     const attrs = m?.attributes ?? m;
+
     const url = attrs?.url || "";
-    const abs = url && !url.startsWith("http") ? joinUrl(origin, url) : url;
+
+    // convert relative URL to full URL
+    const abs =
+        url && !url.startsWith("http")
+            ? `${base}${url}`
+            : url;
+
     return { url: abs };
 }
 

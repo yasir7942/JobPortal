@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import Header from "@/app/components/layouts/staff/Header";
 
 import ENUMS from "../../../../config/enums.json";
 
@@ -12,7 +11,6 @@ import DocumentsFieldArray from "@/app/staff/ui/DocumentsFieldArray";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getAllJobRoles } from "@/app/data/Loader";
 
 import {
     Field,
@@ -33,6 +31,7 @@ import {
 function isValidUrlOptional(v) {
     const s = String(v || "").trim();
     if (!s) return true;
+
     try {
         const u = new URL(s);
         return u.protocol === "http:" || u.protocol === "https:";
@@ -41,18 +40,31 @@ function isValidUrlOptional(v) {
     }
 }
 
+async function fetchJobRoles() {
+    const res = await fetch("/api/candidates/job-role", {
+        method: "GET",
+        cache: "no-store",
+    });
+
+    const json = await res.json();
+
+    if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to fetch job roles");
+    }
+
+    return Array.isArray(json?.data) ? json.data : [];
+}
+
 /* ------------------------------------------------------------------ */
 /* Schema (Strapi fields) */
 /* ------------------------------------------------------------------ */
 const CandidateCreateSchema = z
     .object({
-        referenceNumber: z.string().optional(), // auto by Strapi
+        referenceNumber: z.string().optional(),
 
-        // ✅ REQUIRED ONLY
         fullName: z.string().min(1, "Full name is required"),
         firstName: z.string().min(2, "First name must be at least 2 characters"),
 
-        // ✅ OPTIONAL
         lastName: z.string().optional(),
 
         genderList: z.string().optional(),
@@ -84,18 +96,15 @@ const CandidateCreateSchema = z
 
         dateScreeningInterview: z.string().optional(),
 
-        // account
         username: z.string().min(1, "Username is required"),
         password: z.string().min(3, "Password must be at least 3 characters"),
         retypePassword: z.string().min(3, "Retype Password must be at least 3 characters"),
 
-        // media
         profileImage: z.any().optional(),
         CV: z.any().optional(),
         passport: z.any().optional(),
         passportExpireDate: z.string().optional(),
 
-        // NEW simple links
         workingVideoLink: z.string().optional(),
         miScreeningVideoLink: z.string().optional(),
 
@@ -155,6 +164,7 @@ const CandidateCreateSchema = z
 
         const p = (val.password || "").trim();
         const rp = (val.retypePassword || "").trim();
+
         if (p || rp) {
             if (p.length < 4) {
                 ctx.addIssue({
@@ -163,6 +173,7 @@ const CandidateCreateSchema = z
                     message: "Password must be at least 4 characters",
                 });
             }
+
             if (!rp) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
@@ -170,6 +181,7 @@ const CandidateCreateSchema = z
                     message: "Retype password is required",
                 });
             }
+
             if (p && rp && p !== rp) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
@@ -217,6 +229,7 @@ const CandidateCreateSchema = z
 
         (val.documents || []).forEach((d, i) => {
             const any = (d?.name || "").trim() || (d?.remarks || "").trim() || d?.file;
+
             if (!any) return;
 
             if (!String(d?.name || "").trim()) {
@@ -250,19 +263,43 @@ const CandidateCreateSchema = z
 /* ------------------------------------------------------------------ */
 export default function NewCandidatePage() {
     const [jobRoles, setJobRoles] = useState([]);
+    const [jobRolesLoading, setJobRolesLoading] = useState(true);
+    const [jobRolesError, setJobRolesError] = useState("");
+    const [submitMsg, setSubmitMsg] = useState("");
 
     useEffect(() => {
-        (async () => {
-            try {
-                const res = await getAllJobRoles();
-                setJobRoles(res);
-            } catch (e) {
-                console.log(e);
-            }
-        })();
-    }, []);
+        let alive = true;
 
-    const [submitMsg, setSubmitMsg] = useState("");
+        async function loadJobRoles() {
+            try {
+                setJobRolesLoading(true);
+                setJobRolesError("");
+
+                const roles = await fetchJobRoles();
+
+                if (!alive) return;
+
+                setJobRoles(roles);
+            } catch (error) {
+                console.error("Fetch job roles error:", error);
+
+                if (!alive) return;
+
+                setJobRoles([]);
+                setJobRolesError(error?.message || "Failed to fetch job roles");
+            } finally {
+                if (alive) {
+                    setJobRolesLoading(false);
+                }
+            }
+        }
+
+        loadJobRoles();
+
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     const {
         register,
@@ -324,23 +361,29 @@ export default function NewCandidatePage() {
     });
 
     const profileImage = watch("profileImage");
+
     const profilePreview = useMemo(() => {
         if (profileImage && profileImage instanceof File) {
             return URL.createObjectURL(profileImage);
         }
+
         return "";
     }, [profileImage]);
 
     useEffect(() => {
         if (!(profileImage instanceof File)) return;
+
         const url = URL.createObjectURL(profileImage);
+
         return () => URL.revokeObjectURL(url);
     }, [profileImage]);
 
     const onSubmit = async (formData) => {
         setSubmitMsg("");
 
-        if (formData.mobile) formData.mobile = normalizePhone(formData.mobile);
+        if (formData.mobile) {
+            formData.mobile = normalizePhone(formData.mobile);
+        }
 
         try {
             const payloadData = {
@@ -357,14 +400,17 @@ export default function NewCandidatePage() {
             };
 
             const fd = new FormData();
+
             fd.append("data", JSON.stringify(payloadData));
 
             if (formData.profileImage instanceof File) {
                 fd.append("files.profileImage", formData.profileImage);
             }
+
             if (formData.CV instanceof File) {
                 fd.append("files.CV", formData.CV);
             }
+
             if (formData.passport instanceof File) {
                 fd.append("files.passport", formData.passport);
             }
@@ -387,16 +433,14 @@ export default function NewCandidatePage() {
             }
 
             setSubmitMsg(`Candidate saved ✅ Ref: ${json.referenceNumber || ""}`);
-        } catch (e) {
-            console.error("Add Candidate Error:", e);
-            setSubmitMsg(`Error: ${e.message || "Candidate not saved"} ❌`);
+        } catch (error) {
+            console.error("Add Candidate Error:", error);
+            setSubmitMsg(`Error: ${error.message || "Candidate not saved"} ❌`);
         }
     };
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <Header />
-
             <main className="mx-auto w-[95%] lg:w-[85%] px-2 sm:px-4 py-5">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                     <header className="border-b border-gray-200 bg-white px-4 py-4">
@@ -405,6 +449,7 @@ export default function NewCandidatePage() {
                                 <div className="text-lg text-gray-900">Create Candidate</div>
                                 <div className="text-sm text-gray-600">Create new candidate.</div>
                             </div>
+
                             <Link
                                 href="/staff/candidates"
                                 className="rounded-xl border border-gray-400 bg-white px-6 py-2 text-base text-gray-700 hover:bg-gray-50"
@@ -417,7 +462,9 @@ export default function NewCandidatePage() {
                     <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-6">
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Identity & Contact</div>
-                            <div className="text-sm text-gray-800 mt-1">Start with required information for quick processing.</div>
+                            <div className="text-sm text-gray-800 mt-1">
+                                Start with required information for quick processing.
+                            </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Field
@@ -452,7 +499,11 @@ export default function NewCandidatePage() {
                                 {profilePreview ? (
                                     <div className="rounded-2xl border border-gray-200 p-3 bg-gray-50">
                                         <div className="text-sm text-gray-800 mb-2">Preview</div>
-                                        <img src={profilePreview} className="h-40 w-40 rounded-2xl object-cover border border-gray-200 bg-white" alt="Preview" />
+                                        <img
+                                            src={profilePreview}
+                                            className="h-40 w-40 rounded-2xl object-cover border border-gray-200 bg-white"
+                                            alt="Preview"
+                                        />
                                     </div>
                                 ) : null}
                             </div>
@@ -469,13 +520,22 @@ export default function NewCandidatePage() {
                                 >
                                     <Input {...register("firstName")} />
                                 </Field>
-                                <Field label="Last Name" info="Candidate last name as per passport." error={errors.lastName?.message}>
+
+                                <Field
+                                    label="Last Name"
+                                    info="Candidate last name as per passport."
+                                    error={errors.lastName?.message}
+                                >
                                     <Input {...register("lastName")} />
                                 </Field>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <Field label="Gender" info="Enumeration from Strapi (Male/Female/Undisclosed)." error={errors.genderList?.message}>
+                                <Field
+                                    label="Gender"
+                                    info="Enumeration from Strapi (Male/Female/Undisclosed)."
+                                    error={errors.genderList?.message}
+                                >
                                     <Select {...register("genderList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.genders.map((g) => (
@@ -490,7 +550,11 @@ export default function NewCandidatePage() {
                                     <Input {...register("birthDate")} type="date" />
                                 </Field>
 
-                                <Field label="Nationality" info="Enumeration from Strapi." error={errors.nationalityList?.message}>
+                                <Field
+                                    label="Nationality"
+                                    info="Enumeration from Strapi."
+                                    error={errors.nationalityList?.message}
+                                >
                                     <Select {...register("nationalityList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.nationalities.map((n) => (
@@ -511,24 +575,42 @@ export default function NewCandidatePage() {
 
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Job & Status</div>
-                            <div className="text-sm text-gray-800 mt-1">Most-used screening fields for shortlisting.</div>
+                            <div className="text-sm text-gray-800 mt-1">
+                                Most-used screening fields for shortlisting.
+                            </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Controller
                                     control={control}
                                     name="job_roles"
                                     render={({ field }) => (
-                                        <MultiSelectSearchIds
-                                            label="Job Roles"
-                                            info="Search and select multiple roles (Strapi relation)."
-                                            hint="Type to search roles. Select multiple."
-                                            options={jobRoles}
-                                            value={field.value || []}
-                                            onChange={field.onChange}
-                                            error={errors.job_roles?.message}
-                                            getLabel={(o) => o.title}
-                                            getValue={(o) => o.id}
-                                        />
+                                        <div>
+                                            <MultiSelectSearchIds
+                                                label="Job Roles"
+                                                info="Search and select multiple roles (Strapi relation)."
+                                                hint={
+                                                    jobRolesLoading
+                                                        ? "Loading job roles..."
+                                                        : jobRolesError
+                                                            ? "Job roles failed to load."
+                                                            : "Type to search roles. Select multiple."
+                                                }
+                                                options={jobRoles}
+                                                value={field.value || []}
+                                                onChange={field.onChange}
+                                                error={errors.job_roles?.message || jobRolesError}
+                                                getLabel={(o) => o.title}
+                                                getValue={(o) => o.id}
+                                            />
+
+                                            {jobRolesLoading ? (
+                                                <div className="mt-1 text-xs text-gray-500">Loading job roles...</div>
+                                            ) : null}
+
+                                            {jobRolesError ? (
+                                                <div className="mt-1 text-xs text-red-600">{jobRolesError}</div>
+                                            ) : null}
+                                        </div>
                                     )}
                                 />
 
@@ -545,7 +627,11 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <Field label="Marital Status" info="Enumeration from Strapi." error={errors.maritalStatusList?.message}>
+                                <Field
+                                    label="Marital Status"
+                                    info="Enumeration from Strapi."
+                                    error={errors.maritalStatusList?.message}
+                                >
                                     <Select {...register("maritalStatusList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.maritalStatus.map((x) => (
@@ -556,7 +642,11 @@ export default function NewCandidatePage() {
                                     </Select>
                                 </Field>
 
-                                <Field label="Seasonal Status" info="Enumeration from Strapi." error={errors.seasonalStatusList?.message}>
+                                <Field
+                                    label="Seasonal Status"
+                                    info="Enumeration from Strapi."
+                                    error={errors.seasonalStatusList?.message}
+                                >
                                     <Select {...register("seasonalStatusList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.seasonalStatus.map((x) => (
@@ -567,7 +657,11 @@ export default function NewCandidatePage() {
                                     </Select>
                                 </Field>
 
-                                <Field label="English Level" info="Enumeration from Strapi." error={errors.englishLevelList?.message}>
+                                <Field
+                                    label="English Level"
+                                    info="Enumeration from Strapi."
+                                    error={errors.englishLevelList?.message}
+                                >
                                     <Select {...register("englishLevelList")}>
                                         <option value="">Choose here</option>
                                         {ENUMS.englishLevel.map((x) => (
@@ -583,7 +677,10 @@ export default function NewCandidatePage() {
                                         control={control}
                                         name="isProfileVerifiedList"
                                         render={({ field }) => (
-                                            <Select value={field.value || ""} onChange={(e) => field.onChange(e.target.value)}>
+                                            <Select
+                                                value={field.value || ""}
+                                                onChange={(e) => field.onChange(e.target.value)}
+                                            >
                                                 <option value="">Choose here</option>
                                                 {ENUMS.isProfileVerified.map((x, idx) => (
                                                     <option key={`${x}-${idx}`} value={x}>
@@ -597,7 +694,11 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <Field label="Number of Experience (Years)" info="Total experience in years. (number field)" error={errors.numberOfExperience?.message}>
+                                <Field
+                                    label="Number of Experience (Years)"
+                                    info="Total experience in years. (number field)"
+                                    error={errors.numberOfExperience?.message}
+                                >
                                     <Input {...register("numberOfExperience")} type="number" min={0} step={1} />
                                 </Field>
 
@@ -606,7 +707,10 @@ export default function NewCandidatePage() {
                                         control={control}
                                         name="currentlyEmployed"
                                         render={({ field }) => (
-                                            <Select value={String(field.value)} onChange={(e) => field.onChange(e.target.value === "true")}>
+                                            <Select
+                                                value={String(field.value)}
+                                                onChange={(e) => field.onChange(e.target.value === "true")}
+                                            >
                                                 <option value="">Choose here</option>
                                                 {ENUMS.yesNo.map((x) => (
                                                     <option key={x.label} value={String(x.value)}>
@@ -618,7 +722,11 @@ export default function NewCandidatePage() {
                                     />
                                 </Field>
 
-                                <Field label="Source" info="Where did this candidate come from? (e.g. Facebook, Referral, Agency)" error={errors.source?.message}>
+                                <Field
+                                    label="Source"
+                                    info="Where did this candidate come from? (e.g. Facebook, Referral, Agency)"
+                                    error={errors.source?.message}
+                                >
                                     <Input {...register("source")} placeholder="e.g. Facebook / Referral / Agency" />
                                 </Field>
                             </div>
@@ -633,7 +741,11 @@ export default function NewCandidatePage() {
                                     <Input {...register("previousCompany")} placeholder="Company name" />
                                 </Field>
 
-                                <Field label="Previous Job Experience" info="Short details about previous jobs." error={errors.previousJobExperiece?.message}>
+                                <Field
+                                    label="Previous Job Experience"
+                                    info="Short details about previous jobs."
+                                    error={errors.previousJobExperiece?.message}
+                                >
                                     <Input {...register("previousJobExperiece")} type="number" min={0} step={1} />
                                 </Field>
                             </div>
@@ -643,17 +755,17 @@ export default function NewCandidatePage() {
                                     <Input {...register("currentCompany")} placeholder="Company name" />
                                 </Field>
 
-                                <Field label="Current Job Experience" info="Short details about current job." error={errors.currentJobExperiece?.message}>
+                                <Field
+                                    label="Current Job Experience"
+                                    info="Short details about current job."
+                                    error={errors.currentJobExperiece?.message}
+                                >
                                     <Input {...register("currentJobExperiece")} type="number" min={0} step={1} />
                                 </Field>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field
-                                    label="Short Summary"
-                                    info="Max 250 chars. Good for quick review."
-                                    error={errors.shortSummary?.message}
-                                >
+                                <Field label="Short Summary" info="Max 250 chars. Good for quick review." error={errors.shortSummary?.message}>
                                     <Textarea
                                         {...register("shortSummary")}
                                         placeholder="e.g. Ready to join, strong skills in..."
@@ -662,11 +774,7 @@ export default function NewCandidatePage() {
                                     />
                                 </Field>
 
-                                <Field
-                                    label="Private Notes"
-                                    info="Internal only (not for clients)."
-                                    error={errors.privateNotes?.message}
-                                >
+                                <Field label="Private Notes" info="Internal only (not for clients)." error={errors.privateNotes?.message}>
                                     <Textarea
                                         {...register("privateNotes")}
                                         placeholder="Recruiter notes..."
@@ -718,7 +826,11 @@ export default function NewCandidatePage() {
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Passport Expiry Date" info="Required. Used for visa processing." error={errors.passportExpireDate?.message}>
+                                <Field
+                                    label="Passport Expiry Date"
+                                    info="Required. Used for visa processing."
+                                    error={errors.passportExpireDate?.message}
+                                >
                                     <Input {...register("passportExpireDate")} type="date" />
                                 </Field>
                             </div>
@@ -729,16 +841,17 @@ export default function NewCandidatePage() {
                                     info="Paste video URL. It will open in new tab."
                                     error={errors.workingVideoLink?.message}
                                 >
-                                    <Input
-                                        {...register("workingVideoLink")}
-                                        placeholder="https://..."
-                                        type="url"
-                                    />
+                                    <Input {...register("workingVideoLink")} placeholder="https://..." type="url" />
                                 </Field>
                             </div>
 
                             <div className="mt-4">
-                                <DocumentsFieldArray control={control} register={register} errors={errors} name="documents" />
+                                <DocumentsFieldArray
+                                    control={control}
+                                    register={register}
+                                    errors={errors}
+                                    name="documents"
+                                />
                             </div>
                         </div>
 
@@ -747,7 +860,11 @@ export default function NewCandidatePage() {
                             <div className="text-sm text-gray-800 mt-1">Store interview date and video link</div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Screening Interview Date" info="Date of screening interview (optional)." error={errors.dateScreeningInterview?.message}>
+                                <Field
+                                    label="Screening Interview Date"
+                                    info="Date of screening interview (optional)."
+                                    error={errors.dateScreeningInterview?.message}
+                                >
                                     <Input {...register("dateScreeningInterview")} type="date" />
                                 </Field>
 
@@ -756,11 +873,7 @@ export default function NewCandidatePage() {
                                     info="Paste screening video URL. It will open in new tab."
                                     error={errors.miScreeningVideoLink?.message}
                                 >
-                                    <Input
-                                        {...register("miScreeningVideoLink")}
-                                        placeholder="https://..."
-                                        type="url"
-                                    />
+                                    <Input {...register("miScreeningVideoLink")} placeholder="https://..." type="url" />
                                 </Field>
                             </div>
                         </div>

@@ -3,20 +3,12 @@ export const runtime = "nodejs";
 import qs from "qs";
 
 function strapiBase() {
-    return (
-        process.env.STRAPI_URL ||
-        process.env.NEXT_PUBLIC_STRAPI_URL ||
-        "http://127.0.0.1:1337"
-    ).replace(/\/$/, "");
+    return (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim().replace(/\/$/, "");
 }
 
+
 function strapiToken() {
-    return (
-        process.env.STRAPI_API_TOKEN ||
-        process.env.STRAPI_TOKEN ||
-        process.env.STRAPI_ADMIN_TOKEN ||
-        ""
-    );
+    return process.env.STRAPI_TOKEN || "";
 }
 
 async function readBodySafe(res) {
@@ -42,6 +34,8 @@ async function fetchStrapi(path, queryObj = {}) {
     );
 
     const url = `${base}${path}${query ? `?${query}` : ""}`;
+
+    console.log(`Fetching Strapi: ${url}`);
 
     const res = await fetch(url, {
         headers: {
@@ -80,12 +74,12 @@ export async function GET(req) {
         ).trim();
 
         const [clientsJson, jobsJson, jobRolesJson] = await Promise.all([
-            fetchStrapi("/api/clients", {
+            fetchStrapi("/clients", {
                 fields: ["companyName", "ownerName", "documentId"],
                 pagination: { page: 1, pageSize: 500 },
                 sort: ["createdAt:desc"],
             }),
-            fetchStrapi("/api/jobs", {
+            fetchStrapi("/jobs", {
                 fields: ["title", "referenceNo", "documentId"],
                 pagination: { page: 1, pageSize: 500 },
                 sort: ["createdAt:desc"],
@@ -95,7 +89,7 @@ export async function GET(req) {
                     },
                 },
             }),
-            fetchStrapi("/api/job-roles", {
+            fetchStrapi("/job-roles", {
                 fields: ["title", "documentId"],
                 pagination: { page: 1, pageSize: 500 },
                 sort: ["title:asc"],

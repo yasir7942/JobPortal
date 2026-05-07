@@ -29,8 +29,8 @@ function getFirstIncomingFile(incoming, keys) {
 }
 
 export async function POST(req, { params } = {}) {
-    const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL; // http://127.0.0.1:1337/api
-    const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
+    const STRAPI_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim().replace(/\/$/, "");
+    const RAW_TOKEN = process.env.STRAPI_TOKEN || "";
 
     // ✅ IMPORTANT: confirm this is your real endpoint name in Strapi
     const STAFF_ENDPOINT = "staffs";

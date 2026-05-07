@@ -62,6 +62,193 @@ function StatusPill({ status }) {
     );
 }
 
+
+function getPipelineCounts(job) {
+    const steps = [
+        {
+            key: "suggested",
+            label: "Suggested",
+            match: ["suggested candidate", "suggested"],
+            color: "bg-gray-500",
+            soft: "bg-gray-100",
+            text: "text-gray-700",
+        },
+        {
+            key: "shortlisted",
+            label: "Shortlisted",
+            match: ["shortlisted candidate", "shortlisted"],
+            color: "bg-blue-500",
+            soft: "bg-blue-50",
+            text: "text-blue-700",
+        },
+        {
+            key: "interview",
+            label: "Interview",
+            match: ["requested interview", "interview"],
+            color: "bg-purple-500",
+            soft: "bg-purple-50",
+            text: "text-purple-700",
+        },
+        {
+            key: "hired",
+            label: "Hired",
+            match: ["hired candidate", "hired"],
+            color: "bg-green-600",
+            soft: "bg-green-50",
+            text: "text-green-700",
+        },
+        {
+            key: "immigration",
+            label: "Immigration",
+            match: ["immigration"],
+            color: "bg-amber-500",
+            soft: "bg-amber-50",
+            text: "text-amber-700",
+        },
+        {
+            key: "placed",
+            label: "Placed",
+            match: ["placed"],
+            color: "bg-red-600",
+            soft: "bg-red-50",
+            text: "text-red-700",
+        },
+    ];
+
+    const assignments = Array.isArray(job?.assignCandidatesToJob)
+        ? job.assignCandidatesToJob
+        : [];
+
+    const counts = steps.map((step) => {
+        const count = assignments.filter((item) => {
+            const value = String(item?.candidateProcessList || "")
+                .trim()
+                .toLowerCase();
+
+            return step.match.includes(value);
+        }).length;
+
+        return {
+            ...step,
+            count,
+        };
+    });
+
+    const total = counts.reduce((sum, item) => sum + item.count, 0);
+
+    return { counts, total };
+}
+
+function PipelineQuickView({ job }) {
+    const { counts, total } = getPipelineCounts(job);
+
+    const vacancies = Number(job?.vacanciesNo || 0);
+
+    const weights = {
+        suggested: 10,
+        shortlisted: 25,
+        interview: 45,
+        hired: 70,
+        immigration: 85,
+        placed: 100,
+    };
+
+    const weightedTotal = counts.reduce((sum, item) => {
+        return sum + item.count * (weights[item.key] || 0);
+    }, 0);
+
+    const maxProgress = vacancies > 0 ? vacancies * 100 : 0;
+
+    const percent =
+        maxProgress > 0
+            ? Math.min(100, Math.round((weightedTotal / maxProgress) * 100))
+            : 0;
+
+    return (
+        <div className="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold text-gray-700">
+                    Candidate Pipeline
+                </div>
+
+                <div className="text-[11px] text-gray-600">
+                    {percent}%{" "}
+                    <span className="text-gray-400">
+                        / Vacancies: {vacancies || "—"}
+                    </span>
+                </div>
+            </div>
+
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                <div
+                    className="h-full rounded-full bg-red-300 transition-all"
+                    style={{ width: `${percent}%` }}
+                />
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-1 sm:grid-cols-6">
+                {counts.map((item) => {
+                    const styles = {
+                        suggested: {
+                            wrap: "bg-gray-100 border-gray-300",
+                            label: "text-gray-700",
+                            count: "text-gray-900",
+                        },
+                        shortlisted: {
+                            wrap: "bg-blue-50 border-blue-200",
+                            label: "text-blue-700",
+                            count: "text-blue-800",
+                        },
+                        interview: {
+                            wrap: "bg-purple-50 border-purple-200",
+                            label: "text-purple-700",
+                            count: "text-purple-800",
+                        },
+                        hired: {
+                            wrap: "bg-green-50 border-green-200",
+                            label: "text-green-700",
+                            count: "text-green-800",
+                        },
+                        immigration: {
+                            wrap: "bg-amber-50 border-amber-200",
+                            label: "text-amber-700",
+                            count: "text-amber-800",
+                        },
+                        placed: {
+                            wrap: "bg-red-50 border-red-200",
+                            label: "text-red-700",
+                            count: "text-red-800",
+                        },
+                    };
+
+                    const s = styles[item.key] || {
+                        wrap: "bg-gray-50 border-gray-200",
+                        label: "text-gray-700",
+                        count: "text-gray-900",
+                    };
+
+                    return (
+                        <div
+                            key={item.key}
+                            className={`flex items-center justify-between gap-1 rounded-md border px-2 py-1 ${s.wrap}`}
+                        >
+                            <span className={`truncate text-[10px] leading-none ${s.label}`}>
+                                {item.label}
+                            </span>
+
+                            <span className={`text-[11px] font-bold leading-none ${s.count}`}>
+                                {item.count}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+
+
+        </div>
+    );
+}
+
 /* -------------------- page -------------------- */
 
 export default function ClientJobsPage() {
@@ -380,7 +567,7 @@ export default function ClientJobsPage() {
 
 
             {/* Top Title + Right Menu */}
-            <div className="mt-0 md:mt-3 px-6 py-5 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="mt-0 md:mt-3 px-20 py-5 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3   ">
                 <div className="topHeading border-0">Jobs</div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -415,7 +602,7 @@ export default function ClientJobsPage() {
                 </div>
             </div>
 
-            <div className="w-full mx-auto p-4 space-y-4">
+            <div className="w-full mx-auto p-4 space-y-4 px-20  ">
                 <div className="text-sm text-gray-700">
                     {headerText}{" "}
                     <span className="text-sm text-gray-600 ml-2">
@@ -456,7 +643,7 @@ export default function ClientJobsPage() {
                                     <div className="min-w-0 w-full">
                                         <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3  min-w-0">
                                             <div
-                                                onClick={() => openViewJob(j)}
+                                                onClick={() => OpenJobBoard(j.documentId)}
                                                 className="truncate text-lg sm:text-xl font-bold text-red-700 hover:underline cursor-pointer"
                                             >
                                                 {j.title || "—"}
@@ -534,10 +721,18 @@ export default function ClientJobsPage() {
                                     </div>
                                 </div>
 
+
+
                                 {/* Description */}
                                 <div className="mt-2 text-sm text-gray-700 line-clamp-2">
                                     {j.shortDescription || "—"}
                                 </div>
+
+
+                                {/* Pipeline Quick View */}
+                                <PipelineQuickView job={j} />
+
+
                             </div>
                         ))}
                     </div>
@@ -758,7 +953,7 @@ export default function ClientJobsPage() {
                                 Update
                             </button>
                             <button
-                                onClick={() => closeJob(selectedJob.documentId)}
+                                onClick={() => OpenJobBoard(selectedJob.documentId)}
                                 disabled={String(selectedJob.statusList || "").toLowerCase() === "closed"}
                                 className="rounded-lg bg-red-700 text-white px-4 py-2 text-sm hover:opacity-90 disabled:opacity-40"
                             >

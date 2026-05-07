@@ -16,13 +16,18 @@ function normalizeStrapiMedia(media, STRAPI_BASE_URL) {
     const url = m?.url ?? "";
 
     const origin = String(STRAPI_BASE_URL || "").replace(/\/api\/?$/, "");
-    const absUrl = url ? (url.startsWith("http") ? url : joinUrl(origin, url)) : "";
+    const absUrl = url
+        ? url.startsWith("http")
+            ? url
+            : joinUrl(origin, url)
+        : "";
 
     return { id, name, url: absUrl };
 }
 
 async function readBodySafe(res) {
     const text = await res.text();
+
     try {
         return JSON.parse(text);
     } catch {
@@ -43,6 +48,7 @@ function pickCandidate(candidate, STRAPI_BASE_URL) {
     const documents = Array.isArray(cd?.documents)
         ? cd.documents.map((d) => {
             const file = normalizeStrapiMedia(d?.file, STRAPI_BASE_URL);
+
             return {
                 name: d?.name || file?.name || "Document",
                 remarks: d?.remarks || "",
@@ -92,11 +98,26 @@ export async function GET(_req, ctx) {
         const { documentId } = await ctx.params;
 
         if (!documentId) {
-            return Response.json({ ok: false, error: "Missing documentId" }, { status: 400 });
+            return Response.json(
+                { ok: false, error: "Missing documentId" },
+                { status: 400 }
+            );
         }
 
-        const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL || "http://127.0.0.1:1337/api";
-        const STRAPI_TOKEN = process.env.STRAPI_TOKEN || process.env.STRAPI_API_TOKEN || "";
+        const STRAPI_BASE_URL = String(process.env.STRAPI_BASE_URL || "")
+            .trim()
+            .replace(/\/$/, "");
+
+        const STRAPI_TOKEN = String(process.env.STRAPI_TOKEN || "")
+            .trim()
+            .replace(/\/$/, "");
+
+        if (!STRAPI_BASE_URL || !STRAPI_TOKEN) {
+            return Response.json(
+                { ok: false, error: "Missing STRAPI_BASE_URL or STRAPI_TOKEN" },
+                { status: 500 }
+            );
+        }
 
         const queryObj = {
             status: "published",
@@ -129,26 +150,32 @@ export async function GET(_req, ctx) {
 
         const res = await fetch(url, {
             headers: {
-                Authorization: STRAPI_TOKEN ? `Bearer ${STRAPI_TOKEN}` : "",
+                Authorization: `Bearer ${STRAPI_TOKEN}`,
             },
             cache: "no-store",
         });
 
-
-
         const body = await readBodySafe(res);
-
-
-
 
         if (!res.ok) {
             return Response.json(
-                { ok: false, error: "Failed to fetch job from Strapi", details: body },
+                {
+                    ok: false,
+                    error: "Failed to fetch job from Strapi",
+                    details: body,
+                },
                 { status: res.status }
             );
         }
 
         const jobData = body?.data || null;
+
+        if (!jobData) {
+            return Response.json(
+                { ok: false, error: "Job not found" },
+                { status: 404 }
+            );
+        }
 
         const job = {
             documentId: jobData?.documentId || documentId,
@@ -167,25 +194,81 @@ export async function GET(_req, ctx) {
             client: jobData?.client || "",
         };
 
-        const rows = Array.isArray(jobData?.assignCandidatesToJob) ? jobData.assignCandidatesToJob : [];
+        const rows = Array.isArray(jobData?.assignCandidatesToJob)
+            ? jobData.assignCandidatesToJob
+            : [];
 
-        const lists = { suggested: [], shortlisted: [], interview: [], hired: [] };
+        const lists = {
+            suggested: [],
+            shortlisted: [],
+            interview: [],
+            hired: [],
+            immigration: [],
+            placed: [],
+        };
 
         for (const r of rows) {
             const process = String(r?.candidateProcessList || "").trim();
+            const processLower = process.toLowerCase();
+
             const c = pickCandidate(r?.candidate, STRAPI_BASE_URL);
 
             if (!c?.documentId) continue;
 
-            if (process === "Suggested Candidate") lists.suggested.push(c);
-            else if (process === "Shortlisted Candidate") lists.shortlisted.push(c);
-            else if (process === "Requested Interview") lists.interview.push(c);
-            else if (process === "Hired Candidate") lists.hired.push(c);
-            else lists.suggested.push(c);
+            const offerLetter = normalizeStrapiMedia(r?.offerLetter, STRAPI_BASE_URL);
+
+            const candidateWithProcess = {
+                ...c,
+                candidateProcessList: process,
+                offerLetter: offerLetter?.url || offerLetter?.name || offerLetter?.id
+                    ? offerLetter
+                    : null,
+            };
+
+            if (
+                processLower === "suggested candidate" ||
+                processLower === "suggested"
+            ) {
+                lists.suggested.push(candidateWithProcess);
+            } else if (
+                processLower === "shortlisted candidate" ||
+                processLower === "shortlisted"
+            ) {
+                lists.shortlisted.push(candidateWithProcess);
+            } else if (
+                processLower === "requested interview" ||
+                processLower === "interview"
+            ) {
+                lists.interview.push(candidateWithProcess);
+            } else if (
+                processLower === "hired candidate" ||
+                processLower === "hired"
+            ) {
+                lists.hired.push(candidateWithProcess);
+            } else if (processLower === "immigration") {
+                lists.immigration.push(candidateWithProcess);
+            } else if (processLower === "placed") {
+                lists.placed.push(candidateWithProcess);
+            } else {
+                lists.suggested.push(candidateWithProcess);
+            }
         }
 
-        return Response.json({ ok: true, job, lists });
+        return Response.json(
+            {
+                ok: true,
+                job,
+                lists,
+            },
+            { status: 200 }
+        );
     } catch (e) {
-        return Response.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
+        return Response.json(
+            {
+                ok: false,
+                error: e?.message || "Server error",
+            },
+            { status: 500 }
+        );
     }
 }

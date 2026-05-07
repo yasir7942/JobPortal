@@ -119,7 +119,7 @@ export async function POST(req) {
             );
         }
 
-        const strapiUrl = process.env.STRAPI_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
+        const strapiUrl = process.env.STRAPI_BASE_URL.replace(/\/$/, "");;
 
         // 1) LOGIN
         const loginRes = await fetch(`${strapiUrl}/auth/local`, {

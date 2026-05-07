@@ -33,6 +33,12 @@ function isValidLink(url) {
     return !!String(url || "").trim();
 }
 
+function proxyMediaUrl(url) {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    return `/api/media/proxy?url=${encodeURIComponent(s)}`;
+}
+
 async function fetchJsonSafe(url) {
     const res = await fetch(url, { cache: "no-store" });
     const text = await res.text();
@@ -74,6 +80,7 @@ function VerifiedIcon({ ok }) {
 
 function StatusPill({ status }) {
     const s = (status || "").toLowerCase();
+
     const cls =
         s === "available"
             ? "border-green-200 bg-green-50 text-green-700"
@@ -102,7 +109,6 @@ function InfoChip({ label, value }) {
 }
 
 function rolesLabelName(roles = []) {
-
     if (!roles?.length) return "—";
     return roles.join(", ");
 }
@@ -142,15 +148,15 @@ export default function CandidateProfilePage() {
                 const json = await fetchJsonSafe(`/api/candidates/getcandidate/${documentId}`);
                 setDetail(json);
 
-                console.log("Candidate details loaded", { json });
-
                 const cvUrl = json?.existingMedia?.CV?.url || "";
+
                 if (isPdfUrl(cvUrl)) {
                     setCvLoading(true);
                     setCvFailed(false);
                     cvLoadedRef.current = false;
 
                     if (cvTimeoutRef.current) clearTimeout(cvTimeoutRef.current);
+
                     cvTimeoutRef.current = setTimeout(() => {
                         if (!cvLoadedRef.current) {
                             setCvFailed(true);
@@ -179,9 +185,10 @@ export default function CandidateProfilePage() {
     }, [documentId]);
 
     const form = detail?.formDefaults || {};
-    console.log("CandidateProfilePage render", { form });
     const existingMedia = detail?.existingMedia || {};
     const profileImageUrl = existingMedia?.profileImage?.url || "";
+    const cvUrl = existingMedia?.CV?.url || "";
+    const previewCvUrl = proxyMediaUrl(cvUrl);
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -197,7 +204,12 @@ export default function CandidateProfilePage() {
                             </div>
                         </div>
 
-
+                        <Link
+                            href="/candidate"
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                            Back
+                        </Link>
                     </div>
 
                     {detailLoading ? (
@@ -222,10 +234,12 @@ export default function CandidateProfilePage() {
                                             e.currentTarget.src = DEFAULT_AVATAR;
                                         }}
                                     />
+
                                     <div>
                                         <div className="text-xl text-red-700">{form.fullName || "—"}</div>
+
                                         <div className="text-sm text-gray-800">
-                                            {rolesLabelName(form.job_roles_name || [])} • {" "}
+                                            {rolesLabelName(form.job_roles_name || [])} •{" "}
                                             <span className="font-medium">{form.jobStatus || "—"}</span>
                                         </div>
 
@@ -242,6 +256,7 @@ export default function CandidateProfilePage() {
                                         <VerifiedIcon ok={isVerifiedValue(form.isProfileVerifiedList)} />
                                         <span>{form.isProfileVerifiedList || "Not Verified"}</span>
                                     </span>
+
                                     <StatusPill status={form.jobStatus} />
                                 </div>
                             </div>
@@ -279,6 +294,7 @@ export default function CandidateProfilePage() {
                                         <div className="text-gray-700">Short Summary</div>
                                         <div className="text-gray-800">{form.shortSummary || "—"}</div>
                                     </div>
+
                                     <div className="text-sm">
                                         <div className="text-gray-700">Private Notes</div>
                                         <div className="text-gray-800">{form.privateNotes || "—"}</div>
@@ -290,6 +306,7 @@ export default function CandidateProfilePage() {
                                 <div className="rounded-xl border border-gray-400 p-3">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="text-base text-gray-800">Passport</div>
+
                                         {existingMedia?.passport?.url ? (
                                             <a
                                                 href={existingMedia.passport.url}
@@ -303,6 +320,7 @@ export default function CandidateProfilePage() {
                                             <span className="text-xs text-gray-500">No file</span>
                                         )}
                                     </div>
+
                                     <div className="text-xs text-gray-800 mt-2">
                                         Expiry: {form.passportExpireDate || "—"}
                                     </div>
@@ -310,6 +328,7 @@ export default function CandidateProfilePage() {
 
                                 <div className="rounded-xl border border-gray-400 p-3">
                                     <div className="text-sm text-gray-800">Working Video</div>
+
                                     <div className="mt-2">
                                         {isValidLink(form.workingVideoLink) ? (
                                             <a
@@ -328,6 +347,7 @@ export default function CandidateProfilePage() {
 
                                 <div className="rounded-xl border border-gray-400 p-3">
                                     <div className="text-sm text-gray-800">MI Screening Video</div>
+
                                     <div className="mt-2">
                                         {isValidLink(form.miScreeningVideoLink) ? (
                                             <a
@@ -342,6 +362,7 @@ export default function CandidateProfilePage() {
                                             <div className="text-xs text-gray-500">None</div>
                                         )}
                                     </div>
+
                                     <div className="text-xs text-gray-800 mt-2">
                                         Screening Date: {form.dateScreeningInterview || "—"}
                                     </div>
@@ -361,6 +382,7 @@ export default function CandidateProfilePage() {
                                         >
                                             <div className="flex-1 min-w-0">
                                                 <div className="text-sm text-gray-800 truncate">{d.name || "—"}</div>
+
                                                 <div className="text-xs text-gray-800">
                                                     Remarks: <span className="text-gray-800">{d.remarks || "—"}</span>
                                                 </div>
@@ -390,9 +412,10 @@ export default function CandidateProfilePage() {
                             <div className="mt-4">
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="text-sm text-gray-800">CV Preview</div>
-                                    {existingMedia?.CV?.url ? (
+
+                                    {cvUrl ? (
                                         <a
-                                            href={existingMedia.CV.url}
+                                            href={cvUrl}
                                             target="_blank"
                                             rel="noreferrer"
                                             className="text-sm text-blue-600 hover:underline"
@@ -404,12 +427,12 @@ export default function CandidateProfilePage() {
                                     )}
                                 </div>
 
-                                {existingMedia?.CV?.url ? (
+                                {cvUrl ? (
                                     <div className="mt-2 rounded-xl border border-gray-400 overflow-hidden relative">
-                                        {isPdfUrl(existingMedia.CV.url) ? (
+                                        {isPdfUrl(cvUrl) ? (
                                             <>
                                                 {cvLoading && (
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-white">
+                                                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white">
                                                         <div className="h-12 w-12 rounded-full border-4 border-red-600 border-t-transparent animate-spin" />
                                                     </div>
                                                 )}
@@ -424,7 +447,7 @@ export default function CandidateProfilePage() {
                                                 ) : (
                                                     <div className="h-[65vh] sm:h-[78vh]">
                                                         <iframe
-                                                            src={existingMedia.CV.url}
+                                                            src={previewCvUrl}
                                                             title="CV PDF"
                                                             className="w-full h-full"
                                                             onLoad={() => {
@@ -444,9 +467,13 @@ export default function CandidateProfilePage() {
                                         ) : (
                                             <div className="p-3 bg-gray-50">
                                                 <img
-                                                    src={existingMedia.CV.url}
+                                                    src={proxyMediaUrl(cvUrl)}
                                                     alt="CV"
                                                     className="w-full max-h-[78vh] object-contain rounded-xl border border-gray-400 bg-white"
+                                                    onError={(e) => {
+                                                        e.currentTarget.onerror = null;
+                                                        e.currentTarget.src = cvUrl;
+                                                    }}
                                                 />
                                             </div>
                                         )}
@@ -454,7 +481,8 @@ export default function CandidateProfilePage() {
                                 ) : null}
 
                                 <p className="mt-2 text-xs text-gray-500">
-                                    Tip: If preview doesn’t load, click <span className="text-gray-700">Open / Download</span>.
+                                    Tip: If preview doesn’t load, click{" "}
+                                    <span className="text-gray-700">Open / Download</span>.
                                 </p>
                             </div>
                         </>

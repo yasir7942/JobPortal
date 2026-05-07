@@ -1,9 +1,20 @@
 // app/login/page.js
+import { Suspense } from "react";
 import LoginForm from "@/app/components/auth/LoginForm";
+import { ClipLoader } from "react-spinners";
 
 export const metadata = {
     title: "Login",
 };
+
+function LoginFormFallback() {
+    return (
+        <div className="flex justify-start items-center gap-3 text-sm text-gray-600">
+            <ClipLoader size={25} color="#b91c1c" speedMultiplier={1} />
+            <div className="text-left">Loading filters...</div>
+        </div>
+    );
+}
 
 export default function LoginPage() {
     return (
@@ -18,7 +29,9 @@ export default function LoginPage() {
                     </div>
 
                     <div className="p-8">
-                        <LoginForm />
+                        <Suspense fallback={<LoginFormFallback />}>
+                            <LoginForm />
+                        </Suspense>
                     </div>
                 </div>
             </div>

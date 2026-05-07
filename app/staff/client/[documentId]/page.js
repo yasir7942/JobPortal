@@ -160,6 +160,15 @@ export default function EditClientPage() {
 
     const { user, role, loadingAuth } = useAuthClient();
 
+    const roleName = String(
+        role?.name ||
+        user?.role?.name ||
+        ""
+    ).toLowerCase();
+
+    const isStaff = roleName === "staff";
+
+
     const [existingMedia, setExistingMedia] = useState({
         logo: { url: "", name: "", id: null },
     });
@@ -486,7 +495,7 @@ export default function EditClientPage() {
                         <div className="rounded-2xl border border-red-200 p-4">
                             <div className="text-base text-red-600 font-semibold">Descriptions & Notes</div>
 
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className={`mt-4 grid grid-cols-1 gap-4 ${isStaff ? "md:grid-cols-2" : ""}`}>
                                 <Field label="Short Description" error={errors.shortDescription?.message}>
                                     <Textarea
                                         {...register("shortDescription")}
@@ -496,14 +505,16 @@ export default function EditClientPage() {
                                     />
                                 </Field>
 
-                                <Field label="Private Note" error={errors.privateNote?.message}>
-                                    <Textarea
-                                        {...register("privateNote")}
-                                        rows={4}
-                                        maxLength={2000}
-                                        placeholder="Internal notes..."
-                                    />
-                                </Field>
+                                {isStaff && (
+                                    <Field label="Private Note" error={errors.privateNote?.message}>
+                                        <Textarea
+                                            {...register("privateNote")}
+                                            rows={4}
+                                            maxLength={2000}
+                                            placeholder="Internal notes..."
+                                        />
+                                    </Field>
+                                )}
                             </div>
                         </div>
 
