@@ -2,7 +2,9 @@
 
 
 import "./globals.css";
+
 import "../app/globals.css";
+
 import { Open_Sans } from "next/font/google";
 import AppShell from "@/app/components/layouts/AppShell";
 

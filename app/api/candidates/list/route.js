@@ -53,6 +53,19 @@ function getUserFields(candidate) {
     };
 }
 
+
+function getAgentFields(candidate) {
+    const d = candidate?.agent?.data ?? candidate?.agent ?? null;
+    const attrs = d?.attributes ?? d;
+
+    return {
+        id: d?.id ?? null,
+        documentId: d?.documentId ?? attrs?.documentId ?? "",
+        companyName: attrs?.companyName ?? "",
+        ownerName: attrs?.ownerName ?? "",
+    };
+}
+
 function getJobRoleTitles(candidate) {
     const arr = relArray(candidate?.job_roles);
     return arr
@@ -66,6 +79,7 @@ function getJobRoleTitles(candidate) {
 /* ----------------------------- route ------------------------------ */
 
 export async function GET(req) {
+
     const STRAPI_BASE_URL = process.env.STRAPI_BASE_URL;
     const RAW_TOKEN = String(process.env.STRAPI_TOKEN || "").trim();
 
@@ -146,6 +160,7 @@ export async function GET(req) {
         const pageSizeRaw = Number(url.searchParams.get("pageSize") || 15);
         const pageSize = Math.min(50, Math.max(1, pageSizeRaw));
         const q = String(url.searchParams.get("q") || "").trim();
+        const agentFilter = String(url.searchParams.get("agent") || "all").trim();
 
         const queryObj = {
             status: "published",
@@ -157,6 +172,7 @@ export async function GET(req) {
                 passport: true,
                 users_permissions_user: true,
                 job_roles: true,
+                agent: true,
                 documents: {
                     populate: {
                         file: true,
@@ -165,8 +181,10 @@ export async function GET(req) {
             },
         };
 
+        const andFilters = [];
+
         if (q) {
-            queryObj.filters = {
+            andFilters.push({
                 $or: [
                     { referenceNumber: { $containsi: q } },
                     { fullName: { $containsi: q } },
@@ -177,12 +195,27 @@ export async function GET(req) {
                     { jobStatus: { $containsi: q } },
                     { workingVideoLink: { $containsi: q } },
                     { miScreeningVideoLink: { $containsi: q } },
-                    { Source: { $containsi: q } },
                     { users_permissions_user: { username: { $containsi: q } } },
                     { users_permissions_user: { email: { $containsi: q } } },
                     { job_roles: { title: { $containsi: q } } },
+                    { agent: { companyName: { $containsi: q } } },
+                    { agent: { ownerName: { $containsi: q } } },
                 ],
-            };
+            });
+        }
+
+        if (agentFilter && agentFilter !== "all") {
+            if (agentFilter === "none") {
+                andFilters.push({ agent: { id: { $null: true } } });
+            } else {
+                andFilters.push({ agent: { documentId: { $eq: agentFilter } } });
+            }
+        }
+
+        if (andFilters.length === 1) {
+            queryObj.filters = andFilters[0];
+        } else if (andFilters.length > 1) {
+            queryObj.filters = { $and: andFilters };
         }
 
         const query = qs.stringify(queryObj, { encodeValuesOnly: true });
@@ -197,6 +230,7 @@ export async function GET(req) {
             const user = getUserFields(c);
             const profile = normalizeStrapiMedia(c?.profileImage, STRAPI_BASE_URL);
             const roles = getJobRoleTitles(c);
+            const agent = getAgentFields(c);
 
             const documentId = c?.documentId || it?.documentId || c?.id || it?.id;
 
@@ -213,7 +247,9 @@ export async function GET(req) {
                 nationalityList: c?.nationalityList || "",
                 jobStatus: c?.jobStatus || "",
                 isProfileVerifiedList: c?.isProfileVerifiedList || "",
-                source: c?.Source ?? c?.source ?? "",
+                agentId: agent.id,
+                agentDocumentId: agent.documentId,
+                agentName: agent.companyName || agent.ownerName || "",
                 workingVideoLink: c?.workingVideoLink || "",
                 miScreeningVideoLink: c?.miScreeningVideoLink || "",
                 profileImageUrl: profile.url || "",

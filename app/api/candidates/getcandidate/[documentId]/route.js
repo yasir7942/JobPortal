@@ -49,6 +49,20 @@ function pickRelIds(rel) {
     return data.map((x) => Number(x?.id)).filter((n) => Number.isFinite(n));
 }
 
+
+function getAgentFromRelation(candidate) {
+    const rel = candidate?.agent;
+    const d = rel?.data ?? rel;
+    const attrs = d?.attributes ?? d;
+
+    return {
+        id: d?.id ?? null,
+        documentId: d?.documentId ?? attrs?.documentId ?? "",
+        companyName: attrs?.companyName ?? "",
+        ownerName: attrs?.ownerName ?? "",
+    };
+}
+
 function getUserFromRelation(candidate) {
     const rel = candidate?.users_permissions_user;
     const d = rel?.data ?? rel;
@@ -172,6 +186,7 @@ export async function GET(req, { params }) {
                     passport: true,
                     users_permissions_user: true,
                     job_roles: true,
+                    agent: true,
                     documents: {
                         populate: {
                             file: true,
@@ -197,6 +212,7 @@ export async function GET(req, { params }) {
         }
 
         const user = getUserFromRelation(candidate);
+        const agent = getAgentFromRelation(candidate);
 
         const existingMedia = {
             profileImage: normalizeStrapiMedia(candidate?.profileImage, STRAPI_BASE_URL),
@@ -238,7 +254,9 @@ export async function GET(req, { params }) {
             previousCompany: candidate?.previousCompany || "",
             currentCompany: candidate?.currentCompany || "",
 
-            source: candidate?.Source ?? candidate?.source ?? "",
+            agent: agent.id || null,
+            agentDocumentId: agent.documentId || "",
+            agentName: agent.companyName || agent.ownerName || "",
 
             dateScreeningInterview: candidate?.dateScreeningInterview || "",
 

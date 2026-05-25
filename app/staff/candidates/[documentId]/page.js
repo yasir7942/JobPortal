@@ -60,6 +60,28 @@ async function fetchJobRoles() {
     return Array.isArray(json?.data) ? json.data : [];
 }
 
+async function fetchAgents() {
+    const res = await fetch("/api/candidates/agents", {
+        method: "GET",
+        cache: "no-store",
+    });
+
+    const json = await res.json();
+
+    if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to fetch agents");
+    }
+
+    return Array.isArray(json?.items) ? json.items : [];
+}
+
+function agentLabel(agent) {
+    if (!agent) return "No Agent";
+    const company = agent.companyName || agent.label || "";
+    const owner = agent.ownerName || "";
+    return owner ? `${company} (${owner})` : company || "Unnamed Agent";
+}
+
 /* ------------------------------------------------------------------ */
 /* Schema (EDIT) */
 /* ------------------------------------------------------------------ */
@@ -96,7 +118,7 @@ const CandidateEditSchema = z
         previousCompany: z.string().max(120, "Max 120 characters").optional(),
         currentCompany: z.string().max(120, "Max 120 characters").optional(),
 
-        source: z.string().max(120, "Max 120 characters").optional(),
+        agent: z.coerce.number().nullable().optional(),
         dateScreeningInterview: z.string().optional(),
 
         username: z.string().min(1, "Username is required"),
@@ -293,6 +315,10 @@ export default function EditCandidatePage() {
     const [jobRolesLoading, setJobRolesLoading] = useState(true);
     const [jobRolesError, setJobRolesError] = useState("");
 
+    const [agents, setAgents] = useState([]);
+    const [agentsLoading, setAgentsLoading] = useState(true);
+    const [agentsError, setAgentsError] = useState("");
+
     const [submitMsg, setSubmitMsg] = useState("");
     const [loading, setLoading] = useState(true);
 
@@ -344,7 +370,7 @@ export default function EditCandidatePage() {
             previousCompany: "",
             currentCompany: "",
 
-            source: "",
+            agent: null,
             dateScreeningInterview: "",
 
             username: "",
@@ -390,6 +416,40 @@ export default function EditCandidatePage() {
         }
 
         loadJobRoles();
+
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadAgents() {
+            try {
+                setAgentsLoading(true);
+                setAgentsError("");
+
+                const list = await fetchAgents();
+
+                if (!alive) return;
+
+                setAgents(list);
+            } catch (error) {
+                console.error("Fetch agents error:", error);
+
+                if (!alive) return;
+
+                setAgents([]);
+                setAgentsError(error?.message || "Failed to fetch agents");
+            } finally {
+                if (alive) {
+                    setAgentsLoading(false);
+                }
+            }
+        }
+
+        loadAgents();
 
         return () => {
             alive = false;
@@ -475,6 +535,7 @@ export default function EditCandidatePage() {
         try {
             const payloadData = {
                 ...formData,
+                agent: formData.agent ? Number(formData.agent) : null,
 
                 profileImage: undefined,
                 CV: undefined,
@@ -770,6 +831,23 @@ export default function EditCandidatePage() {
                                         ))}
                                     </Select>
                                 </Field>
+
+                                <Field label="Agent" info="Link candidate with agent." error={errors.agent?.message || agentsError}>
+                                    <Select {...register("agent")}>
+                                        <option value="">No Agent</option>
+                                        {agents.map((a) => (
+                                            <option key={a.documentId} value={a.id}>
+                                                {agentLabel(a)}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                    {agentsLoading ? (
+                                        <div className="mt-1 text-xs text-gray-500">Loading agents...</div>
+                                    ) : null}
+                                    {agentsError ? (
+                                        <div className="mt-1 text-xs text-red-600">{agentsError}</div>
+                                    ) : null}
+                                </Field>
                             </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -873,16 +951,6 @@ export default function EditCandidatePage() {
                                     />
                                 </Field>
 
-                                <Field
-                                    label="Source"
-                                    info='Schema uses "Source" but form uses "source".'
-                                    error={errors.source?.message}
-                                >
-                                    <Input
-                                        {...register("source")}
-                                        placeholder="e.g. Facebook / Referral / Agency"
-                                    />
-                                </Field>
                             </div>
                         </div>
 

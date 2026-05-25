@@ -368,7 +368,6 @@ const EditSchema = z
         currentJobExperiece: z.string().max(1200, "Max 1200 characters").optional(),
         previousJobExperiece: z.string().max(1200, "Max 1200 characters").optional(),
         previousCompany: z.string().max(120, "Max 120 characters").optional(),
-        source: z.string().max(120, "Max 120 characters").optional(),
 
         // screening
         dateScreeningInterview: z.string().optional(),
@@ -598,7 +597,6 @@ export default function EditCandidatePage({ params }) {
             previousJobExperiece: "",
             previousCompany: "",
 
-            source: "",
 
             dateScreeningInterview: "",
             screeningVideoLink: "",
@@ -886,10 +884,6 @@ export default function EditCandidatePage({ params }) {
                                             </Select>
                                         )}
                                     />
-                                </Field>
-
-                                <Field label="Source" info="Facebook, Referral, Agency, etc." error={errors.source?.message}>
-                                    <Input {...register("source")} placeholder="e.g. Facebook / Referral / Agency" />
                                 </Field>
                             </div>
                         </div>

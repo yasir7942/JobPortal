@@ -39,6 +39,7 @@ function getMenuLinksByRole(role, userDocumentId) {
             { label: "Advance Search Candidates", href: "/search-candidates/" },
             { label: "Clients", href: "/staff/client/" },
             { label: "Candidates", href: "/staff/candidates" },
+            { label: "Agents", href: "/staff/agent" },
             { label: "Jobs", href: "/jobs/job-list" },
             { label: "My Profile", href: "/staff/profile" },
         ];

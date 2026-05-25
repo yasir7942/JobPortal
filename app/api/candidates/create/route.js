@@ -151,6 +151,7 @@ export async function POST(req) {
             : [];
 
         const referenceNumber = `CAN_${userId}`;
+        const agentId = payload?.agent ? Number(payload.agent) : null;
 
         return {
             referenceNumber,
@@ -184,15 +185,13 @@ export async function POST(req) {
             currentlyEmployed: !!payload.currentlyEmployed,
             dateScreeningInterview: payload.dateScreeningInterview || null,
 
-            // schema uses "Source" capital S
-            Source: payload.Source ?? payload.source ?? "",
-
             // NEW simple links
             workingVideoLink: payload.workingVideoLink || "",
             miScreeningVideoLink: payload.miScreeningVideoLink || "",
 
             users_permissions_user: userId,
             job_roles: jobRolesIds,
+            ...(Number.isFinite(agentId) && agentId > 0 ? { agent: agentId } : { agent: null }),
 
             documents: Array.isArray(payload.documents) ? payload.documents : [],
         };

@@ -128,6 +128,8 @@ export async function POST(req, { params } = {}) {
             ? payload.job_roles.map((x) => Number(x)).filter((n) => Number.isFinite(n))
             : [];
 
+        const agentId = payload?.agent ? Number(payload.agent) : null;
+
         return {
             ...(payload.referenceNumber ? { referenceNumber: payload.referenceNumber } : {}),
 
@@ -160,13 +162,12 @@ export async function POST(req, { params } = {}) {
             currentlyEmployed: !!payload.currentlyEmployed,
             dateScreeningInterview: payload.dateScreeningInterview || null,
 
-            Source: payload.Source ?? payload.source ?? "",
-
             workingVideoLink: payload.workingVideoLink || "",
             miScreeningVideoLink: payload.miScreeningVideoLink || "",
 
             ...(userId ? { users_permissions_user: userId } : {}),
             job_roles: jobRolesIds,
+            ...(payload?.agent === null || payload?.agent === "" ? { agent: null } : (Number.isFinite(agentId) && agentId > 0 ? { agent: agentId } : {})),
         };
     }
 
